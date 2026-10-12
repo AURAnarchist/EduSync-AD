@@ -6,6 +6,61 @@
 
 ---
 
+## 0. État d'avancement (mise à jour : 12 octobre 2026)
+
+> Statut vérifié **dans le code et les tests**, pas dans les intentions.
+
+### Phase 0 (semaines 1-2)
+
+| Jours | Livrable | Statut | Où |
+|---|---|---|---|
+| 1-2 | Starter kit : repo Go, `go.mod`, `Taskfile.yml`, CI, `CLAUDE.md`/`AGENTS.md`, cross-build | ✅ Livré | `go.mod`, `Taskfile.yml`, `.github/workflows/ci.yml`, `build/cross-build.sh` |
+| 3-4 | Config chiffrée multi-profil, lecture des fichiers Python | ✅ Livré (testé) | `internal/config` (+ fixture `testdata/config_python.json` généré par Python) |
+| 3-4 | Crypto compatible Python (AES-256-GCM) | ✅ Livré (testé) | `internal/crypto`, avec vecteur d'interopérabilité Python → Go |
+| 5-6 | **Core AD : pool de connexions + TLS + SASL/GSSAPI** | ⬜ À faire | `internal/ad` (dossier créé, vide) |
+| 7-8 | Modèles domaine + audit SQLite | ✅ Livré (testé) | `internal/models`, `internal/audit` (schéma identique à Python, append-only) |
+| 9-10 | Testutil container Samba + fixtures | 🔨 En cours | `Dockerfile.samba-ad`, `provision-ad.sh`, `docs/AD_TEST_ENV.md` |
+| 11-12 | CLI squelette | ✅ Livré (testé) | `cmd/edusync-cli` : `version`, `paths`, `config show`, `audit list`, `connect` (DNS + TCP + TLS) |
+| 13-14 | Wails v3 + HTMX/Alpine/Tailwind embeddé | ✅ Livré (testé) | `cmd/edusync-ad`, `internal/ui`, `web/` — login, dashboard, thème clair/sombre, i18n fr/en |
+
+### Mesures constatées (Linux amd64 — Go 1.27.2, Wails v3.0.0-beta.28, WebKitGTK 2.54.1)
+
+| Critère | Cible | Réel |
+|---|---|---|
+| Tests Go | — | **65 tests, 6 paquets, tous verts** (`task test`) |
+| CLI cross-compilée | toutes cibles | **5 cibles** produites en une commande (`./build/cross-build.sh cli`) |
+| Taille CLI (`-s -w`) | 8-12 MB | **9,5 MB** ✅ |
+| Taille app desktop (`-s -w`) | < 15 MB | **17,2 MB** ⚠️ (glue cgo/WebKit — optimisation à venir) |
+| Démarrage de l'app | < 100 ms | à mesurer (démarrage validé sous Xvfb, smoke test) |
+| CI | vertes | `ci.yml` : job Go (fmt/vet/test/build/smoke) + job Python (pytest) |
+
+### Décisions d'implémentation (à conserver)
+
+1. **Tailwind compilé puis versionné** (`web/static/css/tailwind.css`) : aucun
+   build obligatoire pour un contributeur ni pour l'IA ; `task web:css`
+   régénère après modification des gabarits. Source unique :
+   `web/static/css/input.css` (`source(none)` → seuls `web/templates` et
+   `web/static/js` sont scannés).
+2. **Aucun service Wails lié au JS pour l'instant** : l'UI est intégralement
+   rendue côté serveur (HTMX), ce qui supprime une couche à maintenir. Les
+   bindings (`wails3 generate bindings`) arriveront avec les modules Phase 1
+   qui en ont réellement besoin.
+3. **CLI sans cgo** : `internal/*` reste pur Go (`modernc.org/sqlite`), d'où
+   la compilation croisée sur 5 cibles sans outil système.
+4. **Parité Python ↔ Go exigée par les tests** : format de config JSON,
+   format de chiffrement, schéma SQLite et chemins platformdirs sont couverts
+   par des tests aller-retour (données produites par Python lues par Go).
+
+### Reste de la Phase 0
+
+- `internal/ad` : pool de connexions (LRU, santé, retry/backoff), LDAPS,
+  CA custom, SASL/GSSAPI — **étape bloquante pour les Phases 1+**.
+- `internal/testutil` + tests d'intégration `-tags=integration` contre le
+  container Samba (une fois livré).
+- Workflows `integration.yml` (tests AD réels) et `release.yml` Go.
+
+---
+
 ## Table des matières
 
 1. [Contexte et motivations](#1-contexte-et-motivations)
@@ -449,6 +504,18 @@ La migration est terminée quand **tous** ces critères sont réunis :
 
 ## Prochaines étapes
 
-1. **Générer le starter kit** : structure du repo (§3), `go.mod`, `Taskfile.yml`, CI/CD, `Dockerfile.samba-ad` + `provision-ad.sh`, helpers testutil, `internal/config` + `crypto` + `models` + `audit`, squelette Wails + HTMX/Alpine/Tailwind (login + dashboard), `CLAUDE.md`/`AGENTS.md`, scripts cross-build, `docs/AD_TEST_ENV.md`.
-2. **Lancer la Phase 0** (semaines 1-2) : fondations + AD de test + premier module.
-3. **Attaquer la Phase 1** (semaines 3-7) : modules core v1.x, un par un, tests d'abord.
+1. **Terminer la Phase 0** :
+   - livrer l'AD de test (`Dockerfile.samba-ad`, `provision-ad.sh`,
+     `docs/AD_TEST_ENV.md`) puis `internal/testutil/samba.go` et les
+     premiers tests d'intégration `-tags=integration` ;
+   - implémenter `internal/ad` (pool de connexions, LDAPS + CA custom,
+     SASL/GSSAPI, retry/backoff) — jours 5-6 de la Phase 0 ;
+   - ajouter les workflows `integration.yml` et `release.yml` Go.
+2. **Attaquer la Phase 1** (semaines 3-7) : modules core v1.x, un par un,
+   tests d'abord, en suivant le prompt « nouveau module » de `CLAUDE.md`.
+3. **Aligner le budget binaire** : l'app desktop pèse 17,2 MB (cible 15 MB) —
+   à traiter en Phase 3 (packaging) ou par build tags Wails.
+
+> Historique : la Phase 0 (hors pool AD et testutil) a été livrée le
+> 12 octobre 2026 — starter kit, config, crypto, modèles, audit, CLI, UI,
+> CI et documentation IA (`CLAUDE.md`, `AGENTS.md`).

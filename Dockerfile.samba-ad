@@ -1,0 +1,108 @@
+# =============================================================================
+# Dockerfile.samba-ad — Contrôleur de domaine Active Directory de test
+# -----------------------------------------------------------------------------
+# Image de l'Active Directory de test utilisée par la migration Python -> Go :
+#   - tests d'intégration Go (testcontainers-go, voir internal/testutil)
+#   - démarrage manuel pour les tests UI / CLI (voir docs/AD_TEST_ENV.md)
+#
+#   docker build -f Dockerfile.samba-ad -t edusync-ad-samba .
+#
+# Contenu : Ubuntu 24.04 (LTS) + Samba 4 (rôle « domain controller ») +
+#           Winbind + Kerberos + BIND9 + ldap-utils + OpenSSL.
+# Le domaine n'est PAS provisionné à la construction : c'est l'ENTRYPOINT
+# (provision-ad.sh) qui le fait au premier démarrage du conteneur.
+# =============================================================================
+
+FROM ubuntu:24.04
+
+# --- Paramètres globaux ------------------------------------------------------
+# DEBIAN_FRONTEND=noninteractive : aucune question interactive pendant apt.
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=Europe/Paris \
+    # Realm par défaut, surchargeable à l'exécution (lue par provision-ad.sh)
+    AD_REALM=EDUSYNC.LOCAL \
+    AD_ADMIN_PASSWORD=TestPass123
+
+# --- 1. Pré-réglages non interactifs -----------------------------------------
+# policy-rc.d : interdit le démarrage automatique des services pendant le build
+# (il n'y a pas de systemd dans un conteneur, on démarre tout à la main).
+RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d \
+ && chmod 0755 /usr/sbin/policy-rc.d
+
+# krb5-user pose une question interactive (« Default Kerberos version 5 realm ? »).
+# On pré-répond via debconf puis on réécrit /etc/krb5.conf de façon déterministe
+# juste après (cf. étape 2) : l'installation reste donc totalement non interactive.
+RUN printf 'krb5-admin-server krb5/default_realm string EDUSYNC.LOCAL\n' \
+            'krb5-user krb5/default_realm string EDUSYNC.LOCAL\n' \
+            'krb5-kdc krb5/default_realm string EDUSYNC.LOCAL\n' \
+    | debconf-set-selections || true
+
+# --- 2. Installation des paquets ---------------------------------------------
+#   samba (+ samba-common / samba-common-bin : samba-tool, ldb*) = AD DC
+#   samba-dsdb-modules  = modules de base de données AD (requis)
+#   samba-vfs-modules   = VFS SYSVOL/NETLOGON (requis)
+#   winbind             = passerelle NSS/Winbind
+#   krb5-user           = client Kerberos (kinit, klist…)
+#   bind9               = outillage DNS (le DNS servi est celui de Samba)
+#   ldap-utils          = ldapsearch/ldapmodify pour les vérifications
+#   ssl -> openssl + ssl-cert = génération du certificat auto-signé LDAPS
+#   python3             = dépendance de samba-tool
+#   iproute2            = ss (diagnostic des ports) ; ca-certificates/tzdata
+RUN apt-get update \
+ && apt-get install -y \
+      samba \
+      samba-common \
+      samba-common-bin \
+      samba-dsdb-modules \
+      samba-vfs-modules \
+      winbind \
+      krb5-user \
+      bind9 \
+      ldap-utils \
+      openssl \
+      ssl-cert \
+      python3 \
+      iproute2 \
+      ca-certificates \
+      tzdata \
+ && rm -rf /var/lib/apt/lists/*
+
+# --- 3. krb5.conf par défaut (realm de test) ---------------------------------
+# provision-ad.sh le réécrit si le domaine n'est pas EDUSYNC.LOCAL.
+RUN printf '%s\n' \
+      '# /etc/krb5.conf — configuration Kerberos du domaine de test EduSync-AD' \
+      '[libdefaults]' \
+      '    default_realm = EDUSYNC.LOCAL' \
+      '    dns_lookup_realm = false' \
+      '    dns_lookup_kdc = true' \
+      '    ticket_lifetime = 24h' \
+      '    renew_lifetime = 7d' \
+      '    forwardable = true' \
+      '    rdns = false' \
+      '    default_ccache_name = FILE:/tmp/krb5cc_%{uid}' \
+      '' \
+      '[domain_realm]' \
+      '    .edusync.local = EDUSYNC.LOCAL' \
+      '    edusync.local = EDUSYNC.LOCAL' \
+    > /etc/krb5.conf
+
+# --- 4. Script de provisioning (entrypoint du conteneur) ---------------------
+COPY provision-ad.sh /usr/local/bin/provision-ad.sh
+RUN chmod 0755 /usr/local/bin/provision-ad.sh
+
+# --- 5. Ports exposés --------------------------------------------------------
+#   389   LDAP        636   LDAPS       88  Kerberos (tcp/udp)
+#   53    DNS (Samba) 445   SMB/CIFS    135/RPC + 3268/3269 ouverts aussi par Samba
+EXPOSE 389 636 88 88/udp 53 53/udp 445
+
+# --- 6. Santé du conteneur ---------------------------------------------------
+# Deux vérifications : (1) samba-tool répond (base AD locale accessible),
+# (2) le port LDAP 389 accepte une connexion TCP (daemon bien démarré).
+# start-period couvre le temps de provisionnement du premier démarrage.
+HEALTHCHECK --interval=15s --timeout=8s --start-period=120s --retries=6 \
+    CMD bash -c 'samba-tool domain level show >/dev/null 2>&1 || exit 1; exec 3<>/dev/tcp/127.0.0.1/389 || exit 1'
+
+# --- 7. Démarrage ------------------------------------------------------------
+ENTRYPOINT ["/usr/local/bin/provision-ad.sh"]

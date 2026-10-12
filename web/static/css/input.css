@@ -1,0 +1,26 @@
+/*
+ * EduSync AD — feuille de style source (Tailwind CSS v4).
+ *
+ * Compilation (une seule fois, le résultat est versionné) :
+ *     task web:css
+ * soit :
+ *     npx @tailwindcss/cli -i web/static/css/input.css -o web/static/css/tailwind.css --minify
+ *
+ * `source(none)` désactive la détection automatique : on ne scanne que les
+ * templates et le JS du projet, jamais .venv/ ni les sources Python.
+ */
+@import "tailwindcss" source(none);
+
+@source "../../templates/**/*.html";
+@source "../js/*.js";
+
+/* Thème sombre piloté par la classe « sombre » posée sur <html>
+   (voyant la préférence de l'utilisateur, pas celle du système). */
+@custom-variant dark (&:where(.sombre, .sombre *));
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}

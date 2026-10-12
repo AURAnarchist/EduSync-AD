@@ -17,12 +17,21 @@ venv/
 env/
 
 # Build / packaging
-build/
+# `build/*` plutôt que `build/` : les scripts de cross-build Go (build/*.sh)
+# font partie du dépôt, les artefacts de packaging Python restent ignorés.
+build/*
+!build/*.sh
 dist/
 *.spec
 !packaging/edusync_ad.spec
 packaging/linux/.flatpak-builder/
 packaging/linux/build-dir/
+
+# Go
+bin/
+*.test
+*.out
+*.prof
 
 # Configuration locale et données utilisateur (jamais commitées)
 *.local.json

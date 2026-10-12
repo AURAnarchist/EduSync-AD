@@ -1,0 +1,33 @@
+{
+  "identifiant_format_eleve": "p.nom.annee",
+  "identifiant_format_personnel": "p.nom",
+  "regle_doublons": "lettres_prenom",
+  "politique_mdp_eleve": {
+    "longueur": 8,
+    "majuscules": false,
+    "chiffres": true,
+    "caracteres_speciaux": false,
+    "mot_de_passe_identique": false,
+    "pattern_fixe": null
+  },
+  "politique_mdp_personnel": {
+    "longueur": 12,
+    "majuscules": true,
+    "chiffres": true,
+    "caracteres_speciaux": true,
+    "mot_de_passe_identique": false,
+    "pattern_fixe": null
+  },
+  "domaine_mail": "lycee-example.fr",
+  "format_mail": "{P}.{N}",
+  "regle_prenom_compose": "concatenation",
+  "groupes_classe_auto": false,
+  "ou_parente_classes": "OU=Eleves,DC=lycee,DC=local",
+  "ou_archive": "OU=Archive,DC=lycee,DC=local",
+  "delai_suppression_jours": 45,
+  "theme": "sombre",
+  "langue": "en",
+  "startup_guide_completed": true,
+  "ldaps_verifier_certificat": false,
+  "ldaps_chemin_certificat_ca": "/etc/ssl/certs/adcs-root.pem"
+}

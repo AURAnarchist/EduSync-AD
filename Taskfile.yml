@@ -1,0 +1,135 @@
+# Taskfile — commandes de développement unifiées d'EduSync-AD.
+#
+# `task` sans argument liste toutes les tâches.
+# Deux stacks cohabitent pendant la migration :
+#   - Python (version publiée 1.17.1) : `task test:python`, `task package`
+#   - Go     (cible, voir ROADMAP_GO_MIGRATION.md) : `task dev`, `task test`
+version: '3'
+
+vars:
+  GO_VERSION: '1.27'
+  APP_NAME: edusync-ad
+
+tasks:
+  default:
+    desc: Liste les tâches disponibles
+    cmds:
+      - task --list
+
+  setup:
+    desc: Prépare l'environnement (dépendances Go + CSS)
+    cmds:
+      - go mod download
+      - task: web:css
+
+  dev:
+    desc: Lance l'application desktop (Wails v3) en mode développement
+    deps: [web:css-failli]
+    cmds:
+      - go run ./cmd/edusync-ad
+
+  cli:
+    desc: "Exécute la CLI (ex : task cli -- paths --json)"
+    deps: [build:cli]
+    cmds:
+      - ./bin/edusync-cli {{.CLI_ARGS}}
+
+  build:
+    desc: Construit les binaires de la plateforme courante
+    deps: [web:css-failli]
+    cmds:
+      - go build -o bin/{{.APP_NAME}} ./cmd/edusync-ad
+      - go build -o bin/edusync-cli ./cmd/edusync-cli
+
+  build:cli:
+    desc: Construit uniquement la CLI
+    cmds:
+      - go build -o bin/edusync-cli ./cmd/edusync-cli
+
+  build:all:
+    desc: Matrice de cross-build (voir build/cross-build.sh)
+    cmds:
+      - ./build/cross-build.sh
+
+  test:
+    desc: Tests Go (unitaires + intégration locale)
+    cmds:
+      - go test ./...
+
+  test:race:
+    desc: Tests Go avec détecteur de données partagées
+    cmds:
+      - go test -race ./internal/...
+
+  test:python:
+    desc: Suite de tests Python (version publiée)
+    cmds:
+      - .venv/bin/pytest -q
+
+  test:all:
+    desc: Les deux suites (Go + Python)
+    deps: [test, test:python]
+
+  lint:
+    desc: gofmt (lecture seule) + go vet
+    cmds:
+      - |
+        non_formates=$(gofmt -l cmd internal web 2>/dev/null || true)
+        if [ -n "$non_formates" ]; then
+          echo "Fichiers à formater :"
+          echo "$non_formates"
+          echo "Lancez : task fmt"
+          exit 1
+        fi
+      - go vet ./...
+
+  fmt:
+    desc: Formate les sources Go
+    cmds:
+      - gofmt -w cmd internal web
+
+  web:css:
+    desc: Recompile Tailwind CSS (résultat versionné dans web/static/css/)
+    cmds:
+      - |
+        if command -v tailwindcss >/dev/null 2>&1; then
+          tailwindcss -i web/static/css/input.css -o web/static/css/tailwind.css -m
+        else
+          npx --yes @tailwindcss/cli@latest -i web/static/css/input.css -o web/static/css/tailwind.css --minify
+        fi
+
+  web:css-failli:
+    desc: Recompile le CSS sans échouer si l'outil est absent (le fichier versionné suffit)
+    ignore_error: true
+    cmds:
+      - task: web:css
+
+  ad:start:
+    desc: Démarre l'Active Directory de test (Samba AD DC en container)
+    preconditions:
+      - sh: test -f Dockerfile.samba-ad
+        msg: "Dockerfile.samba-ad absent — voir docs/AD_TEST_ENV.md"
+    cmds:
+      - docker build -f Dockerfile.samba-ad -t edusync-ad-samba .
+      - |
+        docker rm -f edusync-ad-test >/dev/null 2>&1 || true
+        docker run -d --name edusync-ad-test -p 389:389 -p 636:636 -p 53:53/udp edusync-ad-samba
+        echo "AD de test démarré (EDUSYNC.LOCAL / Administrator / TestPass123)"
+
+  ad:stop:
+    desc: Arrête l'AD de test
+    cmds:
+      - docker rm -f edusync-ad-test || true
+
+  ad:shell:
+    desc: Ouvre une ldapsearch dans l'AD de test
+    cmds:
+      - |
+        docker exec -it edusync-ad-test \
+          ldapsearch -x -H ldap://localhost -D "Administrator@EDUSYNC.LOCAL" -w TestPass123 \
+          -b "DC=EDUSYNC,DC=LOCAL" "(objectClass=user)" dn
+
+  clean:
+    desc: Supprime les artefacts de build Go
+    cmds:
+      - rm -rf bin dist

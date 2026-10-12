@@ -1,0 +1,74 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "dash.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+      {{tr .Langue "dash.bienvenue"}} <span class="font-medium text-slate-700 dark:text-slate-200">{{.Utilisateur}}</span>
+      — {{.Domaine}} ({{.Controleur}})
+    </p>
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{{tr .Langue "dash.carte.ad"}}</p>
+      <p class="mt-2 text-sm font-medium text-amber-600 dark:text-amber-400">{{.StatutAD}}</p>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{{tr .Langue "dash.carte.journal"}}</p>
+      <p class="mt-2 text-2xl font-semibold">{{.NbActions}} <span class="text-sm font-normal text-slate-500">{{tr .Langue "dash.nb_actions"}}</span></p>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{{tr .Langue "dash.carte.version"}}</p>
+      <p class="mt-2 text-2xl font-semibold">{{.Version}}</p>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p class="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{{tr .Langue "dash.carte.config"}}</p>
+      <p class="mt-2 break-all font-mono text-xs">{{.CheminConfig}}</p>
+    </div>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+      <h2 class="text-sm font-semibold">{{tr .Langue "dash.dernieres_actions"}}</h2>
+    </div>
+
+    {{if .Actions}}
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+            <tr>
+              <th scope="col" class="px-4 py-2 font-medium">{{tr .Langue "col.date"}}</th>
+              <th scope="col" class="px-4 py-2 font-medium">{{tr .Langue "col.action"}}</th>
+              <th scope="col" class="px-4 py-2 font-medium">{{tr .Langue "col.compte"}}</th>
+              <th scope="col" class="px-4 py-2 font-medium">{{tr .Langue "col.resultat"}}</th>
+              <th scope="col" class="px-4 py-2 font-medium">{{tr .Langue "col.operateur"}}</th>
+              <th scope="col" class="px-4 py-2 font-medium">{{tr .Langue "col.detail"}}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            {{range .Actions}}
+              <tr>
+                <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-slate-500 dark:text-slate-400">{{horodatage .Timestamp}}</td>
+                <td class="px-4 py-2 font-medium">{{.ActionType}}</td>
+                <td class="px-4 py-2">{{.Compte}}</td>
+                <td class="px-4 py-2">
+                  <span class="rounded-full px-2 py-0.5 text-xs font-medium {{if eq .Resultat "succes"}}bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300{{else}}bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300{{end}}">
+                    {{.Resultat}}
+                  </span>
+                </td>
+                <td class="px-4 py-2">{{.Utilisateur}}</td>
+                <td class="px-4 py-2 text-slate-500 dark:text-slate-400">{{.Detail}}</td>
+              </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    {{else}}
+      <p class="px-4 py-6 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "dash.aucune_action"}}</p>
+    {{end}}
+  </div>
+</div>
+{{end}}

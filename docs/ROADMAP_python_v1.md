@@ -12,7 +12,9 @@ Devenir l'outil de référence pour la gestion du cycle de vie des comptes Activ
 
 ---
 
-## 📊 Avancement (mise à jour : 4 octobre 2026)
+## 📊 Avancement (mise à jour : 12 octobre 2026)
+
+> État vérifié **dans le code** (`src/edusync_ad/`), pas dans les intentions.
 
 | Lot | Modules | État |
 |-----|---------|------|
@@ -20,8 +22,15 @@ Devenir l'outil de référence pour la gestion du cycle de vie des comptes Activ
 | **v2.0** | M12 → M18 (photos, profils, quotas, scripts, heures, dossiers perso, espaces de classe) | ✅ Livré |
 | **v2.5** | M19 → M22 (Microsoft 365, Exchange, RDS, imports/exports avancés) | ✅ Livré |
 | **v3.0** | M23 modèles de groupes ✅ — M24 étiquettes & trombinoscopes ✅ — M25 multisite ✅ | ✅ Livré |
-| **v3.5** | M26 délégation RBAC ✅ — M27 portail auto-service ✅ — M28 API REST + Webhooks ✅ | ⬜ À faire |
-| **v4.0** | M29 IA / Assistant ✅ — M30 conformité & sécurité ✅ — M31 DFS/IIS ✅ — M32 sauvegarde ⚡ | ⬜ À faire |
+| **v3.5** | M26 délégation RBAC ✅ — M27 portail auto-service ✅ — M28 API REST + Webhooks ✅ | ✅ Livré — ⚠️ **tests manquants** |
+| **v4.0** | M29 IA / Assistant ✅ — M30 conformité & sécurité ✅ — M31 DFS/IIS ✅ — M32 sauvegarde 🚧 | 🚧 Partiel — **M32 en cours d'implémentation**, tests M29-M32 manquants |
+
+### Reste à faire (ordre de priorité)
+
+1. **M32 — Sauvegarde / Restauration / Migration** : passer du squelette `TODO` à une implémentation réelle (ZIP chiffré, restore 1-clic, migrations vN→vN+1) + tests.
+2. **Dette de tests M26 → M32** : `tests/core/` compte ~757 tests mais **aucun** ne couvre `core/api*.py`, `core/portal*.py`, `core/rbac.py`, `core/ia/`, `core/compliance/`, `core/dfs/`, `core/sauvegarde/`.
+3. **Alignement de numérotation** : les releases publiées sont en `1.x` (actuellement **1.17.1**) alors que ce document décrit des jalons v2.0 → v4.0 (voir la section « Jalons suggérés »).
+4. **Migration Go/Wails** : voir `ROADMAP_GO_MIGRATION.md` — réécriture complète, indépendante de ce document.
 
 ---
 
@@ -161,32 +170,34 @@ Devenir l'outil de référence pour la gestion du cycle de vie des comptes Activ
 - Portail web 100 % stdlib (`http.server`, `smtplib`, `sqlite3`) — aucune dépendance externe
 - Cycle de vie serveur géré par l'onglet, RBAC (`reset_password` / `create_user`), audit `utilisateur="portail"`
 
-### M28 — API REST + Webhooks
+### M28 — API REST + Webhooks ✅
 - API documentée (OpenAPI/Swagger) pour intégration SIS (PRONOTE, EcoleDirecte, etc.)
 - Webhooks : compte créé, migré, départ, MDP reset → notifications externes (Teams, Slack, mail, SI)
 - Sync bidirectionnelle : EduSync ↔ SIS
 
-### M29 — Intelligence artificielle / Assistant
+### M29 — Intelligence artificielle / Assistant ✅
 - Détection anomalies : doublons non résolus, comptes orphelins, OU vides, groupes sans membres
 - Suggestion nettoyage fin d'année
 - Génération identifiants "intelligente" (évite homonymes, respecte charte établissement)
 - Analyse logs → recommandations sécurité
 
-### M30 — Conformité & Sécurité avancée
+### M30 — Conformité & Sécurité avancée ✅
 - Rapport RGPD : données personnelles stockées, droit à l'oubli (purge coffre MDP, anonymisation journal)
 - Durcissement : MFA admin, session unique, verrouillage app par MDP
 - Granularité MDP (Fine-Grained Password Policies / PSO)
 - Signature numérique exports (horodatage, non-répudiation)
 
-### M31 — DFS / IIS / WebDAV / FTP Isolé
+### M31 — DFS / IIS / WebDAV / FTP Isolé ✅
 - Espaces partagés via DFS (réplication multi-serveurs)
 - Publication WebDAV/IIS auto pour dossiers perso/partagés
 - FTP isolé AD — *héritage, priorité basse*
 
-### M32 — Sauvegarde / Restauration / Migration appli
+### M32 — Sauvegarde / Restauration / Migration appli 🚧
 - Backup complet (config, journal, coffre MDP, modèles, certificats) → ZIP chiffré
 - Restore 1-clic sur nouvelle machine
 - Migration données vN → vN+1 auto
+
+> **État** : squelette `TODO` en place (`src/edusync_ad/core/sauvegarde/`), implémentation réelle et tests en cours.
 
 ---
 
@@ -205,15 +216,17 @@ Devenir l'outil de référence pour la gestion du cycle de vie des comptes Activ
 
 ## 🗓️ Jalons suggérés
 
-| Version | Cible | Modules clés |
-|---------|-------|--------------|
-| **v2.0** | Q1 2026 | T0 Async LDAP, T1 Plugin System, T2 AD Cache, M12, M13, M14, M15, M16, M17, M18 |
-| **v2.5** | Q3 2026 | M19, M20, M21, M22 |
-| **v3.0** | Q1 2027 | M23, M24, M25 |
-| **v3.5** | Q3 2027 | M26, M27 (optionnel) |
-| **v4.0** | 2028 | M28, M29, M30, M31, M32 |
+| Jalon | Cible | Modules clés | Statut (12/10/2026) |
+|---------|-------|--------------|----------------------|
+| **v2.0** | Q1 2026 | T0 Async LDAP, T1 Plugin System, T2 AD Cache, M12, M13, M14, M15, M16, M17, M18 | ✅ Livré |
+| **v2.5** | Q3 2026 | M19, M20, M21, M22 | ✅ Livré |
+| **v3.0** | Q1 2027 | M23, M24, M25 | ✅ Livré |
+| **v3.5** | Q3 2027 | M26, M27, M28 | ✅ Livré (tests manquants) |
+| **v4.0** | 2028 | M29, M30, M31, M32 | 🚧 M29-M31 livrés, M32 en cours |
 
 > *Les dates sont indicatives. Priorité = valeur utilisateur / effort / rétroaction terrain.*
+>
+> **Note numérotation** : ces jalons (« v2.0 », « v4.0 »…) désignent des **étapes de périmètre**, pas des numéros de release. Les versions publiées suivent la branche `1.x` (actuellement **1.17.1**). À réaligner lors du prochain jalon majeur pour éviter la confusion.
 
 ---
 

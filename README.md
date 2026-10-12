@@ -133,6 +133,32 @@ pytest
 
 ---
 
+## Migration Go / Wails (en cours)
+
+La prochaine génération d'EduSync AD est réécrite en **Go** (backend + UI
+desktop Wails v3, HTML + HTMX embarqués) : binaire unique léger, LDAP
+natif concurrent, démarrage instantané, cross-compile en une commande —
+**sans perte de fonctionnalité**.
+
+📖 [Feuille de route de migration](ROADMAP_GO_MIGRATION.md) ·
+[Architecture](docs/ARCHITECTURE.md) ·
+[`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) (contexte IA)
+
+```bash
+# Prérequis : Go 1.27+, Task (go install github.com/go-task/task/v3/cmd/task@latest)
+task --list          # toutes les commandes
+task dev             # application desktop
+task cli -- paths --json
+task test            # tests Go (65 tests)
+task lint            # gofmt + go vet
+task build:all       # cross-build → dist/ (5 cibles CLI)
+```
+
+La version Python publiée reste la version de production jusqu'à la fin de la
+migration : les deux stacks sont testées à chaque commit (`ci.yml`).
+
+---
+
 ## Licence
 
 MIT — Usage libre, modification, distribution, usage commercial autorisé.
