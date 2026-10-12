@@ -410,6 +410,27 @@ gerer_adhesions() {
     done
 }
 
+# --- Étape 5bis : politique de mot de passe au niveau domaine ----------------
+# On conserve les valeurs « Windows Server » par défaut (complexité, historique,
+# âge minimum, lockout désactivé) mais on désactive l'expiration : un
+# conteneur de test reste en cache plusieurs jours/semaines et un mot de passe
+# expiré ferait échouer les tests. Les PSO, eux, imposent des durées de vie
+# réelles (90 j pour les élèves, 180 j pour les personnels).
+ajuster_politique_domaine() {
+    local age_max
+    age_max="$(samba-tool domain passwordsettings show 2>/dev/null \
+               | awk -F': ' '/Maximum password age/{print $2}')"
+    if [ "$age_max" = "0" ]; then
+        log "Politique domaine : expiration des mots de passe déjà désactivée"
+        return 0
+    fi
+    if samba-tool domain passwordsettings set --max-pwd-age=0 >/dev/null 2>&1; then
+        log "Politique domaine : expiration désactivée (${age_max:-?} j -> 0 j, PSO inchangés)"
+    else
+        avert "Réglage de la politique de mots de passe impossible (non bloquant)"
+    fi
+}
+
 # --- Étape 6 : LDAPS (certificat auto-signé + smb.conf) ----------------------
 configurer_ldaps() {
     local ip courant
@@ -665,6 +686,7 @@ else
     creer_groupes
     creer_comptes
     gerer_adhesions
+    ajuster_politique_domaine
     touch "$MARQUEUR_SEMIS"
     log "Objets de test créés (OU, groupes, 50 comptes, adhésions)"
 fi

@@ -97,11 +97,12 @@ func join(parts []string, sep string) string {
 // Pool maintient un ensemble de connexions LDAP réutilisables.
 type Pool struct {
 	cfg      Config
-	sem      chan struct{}   // limite le nombre de connexions simultanées
-	idle     chan *ldap.Conn // connexions disponibles
-	tlsCfg   *tls.Config     // configuration TLS partagée
+	sem      chan struct{}       // limite le nombre de connexions simultanées
+	idle     chan *ldap.Conn     // connexions disponibles
+	tlsCfg   *tls.Config         // configuration TLS partagée
 	closed   bool
 	dialFunc func(ctx context.Context, addr string) (net.Conn, error)
+	cache    *ExplorerCache      // cache explorateur (arbre, recherches)
 }
 
 // NewPool crée un pool de connexions AD.
