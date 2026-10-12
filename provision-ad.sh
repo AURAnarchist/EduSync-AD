@@ -56,6 +56,7 @@ TLS_DIR="$SAMB_ADLIB/private/tls"
 SMB_CONF="/etc/samba/smb.conf"
 KRBTMP="/etc/krb5.conf"
 RESOLV_CONF="/etc/resolv.conf"
+CA_SYSTEME="/usr/local/share/ca-certificates/edusync-ad.crt"
 # Marqueurs d'état : écrits uniquement quand l'étape a réellement réussi.
 MARQUEUR_PROVISION="$SAMB_ADLIB/.edusync_provision_ok"
 MARQUEUR_SEMIS="$SAMB_ADLIB/.edusync_semis_ok"
@@ -421,7 +422,7 @@ configurer_ldaps() {
             -keyout "$TLS_DIR/key.pem" \
             -x509 -days 3650 -out "$TLS_DIR/cert.pem" \
             -subj "/C=FR/O=EduSync-AD/OU=AD de test/CN=$(hostname)" \
-            -addext "subjectAltName=DNS:$(hostname),DNS:edusync-dc,DNS:$REALM,DNS:$REALM_MIN,IP:127.0.0.1,IP:$ip" \
+            -addext "subjectAltName=DNS:$(hostname),DNS:localhost,DNS:edusync-dc,DNS:$REALM,DNS:$REALM_MIN,IP:127.0.0.1,IP:$ip" \
             >/dev/null 2>&1
         # Le CA auto-signé est le certificat lui-même (les tests lui font confiance).
         cp "$TLS_DIR/cert.pem" "$TLS_DIR/ca.pem"
@@ -429,6 +430,16 @@ configurer_ldaps() {
         log "  Écrit : $TLS_DIR/{cert.pem,key.pem,ca.pem}"
     else
         log "Certificat TLS déjà présent : $TLS_DIR/cert.pem"
+    fi
+
+    # On enregistre le CA dans le magasin système du conteneur : les outils
+    # (ldapsearch -H ldaps://..., openssl) font alors confiance au certificat
+    # sans avoir à désactiver la vérification. Les clients extérieurs doivent
+    # importer ce même fichier (cf. docs/AD_TEST_ENV.md).
+    if [ ! -f "$CA_SYSTEME" ]; then
+        cp "$TLS_DIR/ca.pem" "$CA_SYSTEME"
+        update-ca-certificates >/dev/null 2>&1 || true
+        log "CA auto-signé ajouté au magasin système du conteneur ($CA_SYSTEME)"
     fi
 
     # smb.conf généré par la provision ne contient aucun paramètre TLS.

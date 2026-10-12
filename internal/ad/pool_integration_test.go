@@ -311,6 +311,74 @@ func TestPoolCertificatCustom(t *testing.T) {
 	p.Put(conn2)
 }
 
+// TestPasswordGenerate génère des MDP conformes aux politiques.
+func TestPasswordGenerate(t *testing.T) {
+	student := DefaultStudentPolicy()
+	for i := 0; i < 50; i++ {
+		pwd, err := student.Generate()
+		if err != nil {
+			t.Fatalf("Generate: %v", err)
+		}
+		if err := student.Validate(pwd, "", "", ""); err != nil {
+			t.Errorf("pwd %q invalide: %v", pwd, err)
+		}
+		if len(pwd) < student.Length {
+			t.Errorf("longueur %d < %d", len(pwd), student.Length)
+		}
+	}
+
+	staff := DefaultStaffPolicy()
+	for i := 0; i < 50; i++ {
+		pwd, err := staff.Generate()
+		if err != nil {
+			t.Fatalf("Generate staff: %v", err)
+		}
+		if err := staff.Validate(pwd, "", "", ""); err != nil {
+			t.Errorf("pwd staff %q invalide: %v", pwd, err)
+		}
+		if len(pwd) < staff.Length {
+			t.Errorf("longueur staff %d < %d", len(pwd), staff.Length)
+		}
+	}
+}
+
+// TestPasswordValidate vérifie la validation contre la politique.
+func TestPasswordValidate(t *testing.T) {
+	p := DefaultStaffPolicy() // 12, upper, digit, special
+
+	cas := []struct {
+		pwd      string
+		shouldOK bool
+	}{
+		{"Abcdefgh123!", true}, // 12 chars
+		{"abcdefgh123!", false}, // pas de majuscule
+		{"Abcdefghijkl!", false}, // pas de chiffre
+		{"Abcdefgh12345", false}, // pas de spécial
+		{"Ab1!", false},          // trop court
+	}
+	for _, c := range cas {
+		err := p.Validate(c.pwd, "", "", "")
+		if c.shouldOK && err != nil {
+			t.Errorf("%q devrait passer: %v", c.pwd, err)
+		}
+		if !c.shouldOK && err == nil {
+			t.Errorf("%q devrait échouer", c.pwd)
+		}
+	}
+
+	// ForbidUserInfo
+	p.ForbidUserInfo = true
+	if err := p.Validate("Abcdef123!john", "jdoe", "John", "Doe"); err == nil {
+		t.Error("devrait refuser prénom dans MDP")
+	}
+	if err := p.Validate("Abcdef123!doe", "jdoe", "John", "Doe"); err == nil {
+		t.Error("devrait refuser nom dans MDP")
+	}
+	if err := p.Validate("Abcdef123!jdoe", "jdoe", "John", "Doe"); err == nil {
+		t.Error("devrait refuser identifiant dans MDP")
+	}
+}
+
 // TestPoolContexteAnnulation : un contexte annulé doit libérer le slot.
 func TestPoolContexteAnnulation(t *testing.T) {
 	skipIfNoSamba(t)
