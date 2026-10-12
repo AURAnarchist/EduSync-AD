@@ -55,6 +55,7 @@ SAMDB="$SAMB_ADLIB/private/sam.ldb"
 TLS_DIR="$SAMB_ADLIB/private/tls"
 SMB_CONF="/etc/samba/smb.conf"
 KRBTMP="/etc/krb5.conf"
+RESOLV_CONF="/etc/resolv.conf"
 # Marqueurs d'état : écrits uniquement quand l'étape a réellement réussi.
 MARQUEUR_PROVISION="$SAMB_ADLIB/.edusync_provision_ok"
 MARQUEUR_SEMIS="$SAMB_ADLIB/.edusync_semis_ok"
@@ -265,7 +266,7 @@ provisionner_domaine() {
 nettoier_provision_incomplet() {
     avert "Provisionnement détecté incomplet : nettoyage de l'état partiel"
     rm -rf "$SAMB_ADLIB/private" "$SAMB_ADLIB/sysvol" "$SAMB_ADLIB/netlogon" \
-           "$SAMB_ADLIB/lock" "$SAMB_ADLIB/cache" "$SAMB_ADLIB/*.ldb"
+           "$SAMB_ADLIB/lock" "$SAMB_ADLIB/cache"
     rm -f "$SMB_CONF" "$MARQUEUR_PROVISION" "$MARQUEUR_SEMIS"
 }
 
@@ -394,7 +395,9 @@ gerer_adhesions() {
         manquants=""
         IFS=',' read -ra liste <<< "${voulus[$g]}"
         for membre in "${liste[@]}"; do
-            [ -z "$membre" ] && continue
+            if [ -z "$membre" ]; then
+                continue
+            fi
             if ! grep -qx "$membre" <<< "$existants"; then
                 manquants="${manquants:+$manquants,}$membre"
             fi
@@ -440,6 +443,18 @@ configurer_ldaps() {
         log "LDAPS activé : port 636 (tls enabled = yes)"
     fi
 
+    # Par défaut, Samba exige une liaison LDAP « forte » (TLS ou SASL) : toute
+    # simple bind en clair sur 389 est rejetée (erreur 8). Windows Server
+    # accepte lui la liaison simple en clair (« LDAP server signing = None »),
+    # et les tests doivent pouvoir vérifier le repli LDAP 389 non chiffré.
+    if grep -qE '^[[:space:]]*ldap server require strong auth[[:space:]]*=' "$SMB_CONF"; then
+        sed -i "s|^[[:space:]]*ldap server require strong auth[[:space:]]*=.*|\tldap server require strong auth = no|" "$SMB_CONF"
+        log "Liaison simple LDAP autorisée en clair (ldap server require strong auth = no)"
+    else
+        inserer_apres_global "	ldap server require strong auth = no"
+        log "Liaison simple LDAP autorisée en clair (ldap server require strong auth = no)"
+    fi
+
     # Forwarder DNS : conservé tel qu'écrit par la provision s'il n'est pas forcé.
     if [ -n "${DNS_FORWARDER:-}" ]; then
         if grep -qE '^[[:space:]]*dns forwarder[[:space:]]*=' "$SMB_CONF"; then
@@ -475,11 +490,21 @@ demarrer_samba() {
     SAMBA_PID=$!
     log "PID Samba : $SAMBA_PID"
 
-    if ! attendre_port "$PORT_LDAP" 120; then
-        avert "Port LDAP $PORT_LDAP jamais ouvert — dernier messages Samba :"
-        sleep 2
-        die "Samba AD DC n'a pas démarré (voir message ci-dessus)"
-    fi
+    # Attente du port LDAP : on échoue vite si Samba meurt au démarrage
+    # (port 53 déjà pris, config invalide, droits insuffisants...).
+    local i
+    for ((i = 1; i <= 120; i++)); do
+        if ! kill -0 "$SAMBA_PID" 2>/dev/null; then
+            die "Samba s'est arrêté au démarrage (voir journal ci-dessus)"
+        fi
+        if port_ouvert "$PORT_LDAP"; then
+            break
+        fi
+        if [ "$i" -eq 120 ]; then
+            die "Samba n'a pas ouvert le port LDAP $PORT_LDAP (timeout 120 s)"
+        fi
+        sleep 1
+    done
     log "LDAP répond sur le port $PORT_LDAP"
 
     if ! attendre_port "$PORT_LDAPS" 60; then
@@ -488,19 +513,53 @@ demarrer_samba() {
     log "LDAPS répond sur le port $PORT_LDAPS"
 }
 
-# --- Étape 8 : GPO et politiques de mots de passe granulaires ----------------
+# --- Étape 8 : résolution DNS locale -----------------------------------------
+# Les commandes Samba (découverte du DC via SRV _ldap._tcp) et Kerberos ont
+# besoin de résoudre la zone du domaine : elle n'est servie que par Samba.
+# On pointe donc /etc/resolv.conf vers le DNS intégré du DC (comme sur un
+# Windows Server qui se référence lui-même), le forwarder externe étant déjà
+# renseigné dans smb.conf lors de la provision.
+configurer_resolution_dns() {
+    local ancien
+    if ! port_ouvert 53; then
+        avert "DNS du domaine non à l'écoute (port 53) : /etc/resolv.conf inchangé"
+        return 0
+    fi
+    if grep -qE '^[[:space:]]*nameserver[[:space:]]+127\.0\.0\.1$' "$RESOLV_CONF"; then
+        log "Résolution DNS déjà locale (127.0.0.1 = DNS du domaine)"
+        return 0
+    fi
+    ancien="$(grep -E '^[[:space:]]*nameserver' "$RESOLV_CONF" | head -1 | awk '{print $2}')"
+    cp -a "$RESOLV_CONF" "$RESOLV_CONF.edusync-bak" 2>/dev/null || true
+    printf 'nameserver 127.0.0.1\nsearch %s\n' "$REALM_MIN" > "$RESOLV_CONF"
+    log "Résolution DNS : ${ancien:-inconnu} -> 127.0.0.1 (DNS Samba, zone $REALM)"
+}
+
+# --- Étape 9 : GPO et politiques de mots de passe granulaires ----------------
+# Les commandes « gpo » interrogent le DC via CLDAP : elles exigent donc la
+# résolution DNS locale (ci-dessus) ET des identifiants (la liaison anonyme
+# ne donne pas les droits d'écriture sur CN=Policies).
+GPO_ETAT="absente"
+
 creer_gpo_de_test() {
-    if samba-tool gpo listall 2>/dev/null | grep -qF "$GPO_NOM"; then
+    local sortie guid
+    if samba-tool gpo listall -U "Administrator%$MDP_ADMIN" 2>/dev/null | grep -qF "$GPO_NOM"; then
+        GPO_ETAT="présente"
         log "GPO [$GPO_NOM] déjà présente"
         return 0
     fi
-    if ! samba-tool gpo create "$GPO_NOM" >/dev/null 2>&1; then
-        avert "samba-tool gpo create non disponible : GPO de test ignorée"
+    if ! sortie="$(samba-tool gpo create "$GPO_NOM" -U "Administrator%$MDP_ADMIN" 2>&1)"; then
+        avert "Création de la GPO de test impossible (non bloquant)"
+        avert "  $(printf '%s' "$sortie" | grep -m1 -E '^(ERROR|LDAP)' || printf '%s' "$sortie" | tail -1)"
+        GPO_ETAT="échec"
         return 0
     fi
-    log "GPO créée : [$GPO_NOM]"
-    # Liaison aux OU de test (best-effort : la GPO reste utilisable sans lien).
-    if samba-tool gpo setlink "OU=Eleves,$BASE_DN" "$GPO_NOM" >/dev/null 2>&1; then
+    guid="$(printf '%s' "$sortie" | grep -oE '\{[0-9A-Fa-f-]{36}\}' | head -1)"
+    GPO_ETAT="présente"
+    log "GPO créée : [$GPO_NOM] $guid"
+    # Liaison à l'OU Eleves (best-effort) : samba-tool gpo setlink attend le GUID.
+    if [ -n "$guid" ] && samba-tool gpo setlink "OU=Eleves,$BASE_DN" "$guid" \
+            -U "Administrator%$MDP_ADMIN" >/dev/null 2>&1; then
         log "  liée à OU=Eleves"
     else
         avert "Liaison GPO -> OU=Eleves non appliquée (non bloquant)"
@@ -547,7 +606,7 @@ creer_pso_de_test() {
     fi
 }
 
-# --- Étape 9 : récapitulatif -------------------------------------------------
+# --- Étape 10 : récapitulatif ------------------------------------------------
 afficher_resume() {
     local nb_eleves nb_persos nb_ous duree
     nb_eleves="$(samba-tool user list 2>/dev/null | grep -cE '^eleve[0-9]+$' || true)"
@@ -565,7 +624,7 @@ afficher_resume() {
     log "Comptes élèves ..... $nb_eleves/25 (CN=eleveNN,OU=Eleves,$BASE_DN)"
     log "Comptes personnels . $nb_persos/25 (CN=persoNN,OU=Personnels,$BASE_DN)"
     log "Groupes ............ ${#CLASSES[@]} classes + ${#SERVICES[@]} services + ${#RBAC[@]} délégations RBAC"
-    log "GPO / PSO .......... [$GPO_NOM] / [$PSO_ELEVES] + [$PSO_PERSONNELS]"
+    log "GPO / PSO .......... GPO [$GPO_NOM] : $GPO_ETAT | PSO [$PSO_ELEVES] + [$PSO_PERSONNELS]"
     log "Provisionnement terminé en ${duree}s"
     log "-----------------------------------------------------------"
 }
@@ -605,18 +664,31 @@ configurer_ldaps
 # 4. Samba AD DC --------------------------------------------------------------
 demarrer_samba
 
-# 5. GPO + politiques granulaires (après démarrage : accès LDAP garanti) -------
+# 5. Résolution locale de la zone du domaine (découverte du DC, Kerberos) -----
+configurer_resolution_dns
+
+# 6. GPO + politiques granulaires (après démarrage : accès LDAP garanti) -------
 creer_gpo_de_test
 creer_pso_de_test
 
-# 6. Récapitulatif puis message d'appel (attendu par testcontainers) ----------
+# 7. Récapitulatif puis message d'appel (attendu par testcontainers) ----------
 afficher_resume
 printf 'Samba AD DC ready\n'
 
 # Le conteneur reste actif tant que Samba tourne (docker stop → SIGTERM → exit).
-set +e
-wait "$SAMBA_PID"
-code_statut=$?
-set -e
+code_statut=0
+if [ -n "$SAMBA_PID" ]; then
+    set +e
+    wait "$SAMBA_PID"
+    code_statut=$?
+    set -e
+else
+    # Samba est déjà supervisé (script relancé à l'intérieur du conteneur) :
+    # on garde simplement le conteneur vivant.
+    log "Samba supervisé par un autre processus : le conteneur reste actif"
+    while :; do
+        sleep 5
+    done
+fi
 log "Samba AD DC s'est arrêté (code $code_statut)"
 exit "$code_statut"
