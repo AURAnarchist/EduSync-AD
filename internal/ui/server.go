@@ -12,18 +12,22 @@ package ui
 
 import (
 	"crypto/rand"
+	"encoding/csv"
 	"encoding/hex"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/estemobs/EduSync-AD/internal/ad"
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/models"
@@ -92,6 +96,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	sessions map[string]*session
+	adPools  map[string]*ad.Pool // clé = sessionID
 }
 
 // New prépare le serveur d'interface (templates, assets, journal).
@@ -152,6 +157,34 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /logout", s.deconnexion)
 	mux.HandleFunc("POST /theme", s.changerTheme)
 	mux.HandleFunc("POST /langue", s.changerLangue)
+
+	// AD Modules (protégés par session)
+	mux.HandleFunc("GET /app/users", s.requireAuth(s.pageUsers))
+	mux.HandleFunc("POST /app/users/import", s.requireAuth(s.usersImport))
+	mux.HandleFunc("POST /app/users/simulate", s.requireAuth(s.usersSimulate))
+	mux.HandleFunc("POST /app/users/execute", s.requireAuth(s.usersExecute))
+
+	mux.HandleFunc("GET /app/password", s.requireAuth(s.pagePassword))
+	mux.HandleFunc("POST /app/password/simulate", s.requireAuth(s.passwordSimulate))
+	mux.HandleFunc("POST /app/password/execute", s.requireAuth(s.passwordExecute))
+
+	mux.HandleFunc("GET /app/migration", s.requireAuth(s.pageMigration))
+	mux.HandleFunc("POST /app/migration/plan", s.requireAuth(s.migrationPlan))
+	mux.HandleFunc("POST /app/migration/simulate", s.requireAuth(s.migrationSimulate))
+	mux.HandleFunc("POST /app/migration/execute", s.requireAuth(s.migrationExecute))
+
+	mux.HandleFunc("GET /app/explorer", s.requireAuth(s.pageExplorer))
+	mux.HandleFunc("POST /app/explorer/search", s.requireAuth(s.explorerSearch))
+	mux.HandleFunc("POST /app/explorer/tree", s.requireAuth(s.explorerTree))
+
+	mux.HandleFunc("GET /app/export", s.requireAuth(s.pageExport))
+	mux.HandleFunc("POST /app/export/csv", s.requireAuth(s.exportCSV))
+	mux.HandleFunc("POST /app/export/pdf", s.requireAuth(s.exportPDF))
+
+	// Audit / Journal
+	mux.HandleFunc("GET /app/audit", s.requireAuth(s.pageAudit))
+	mux.HandleFunc("POST /app/audit/filter", s.requireAuth(s.auditFilter))
+
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
 }
@@ -387,6 +420,34 @@ func (s *Server) cheminConfig() (string, error) {
 		return s.opts.ConfigPath, nil
 	}
 	return config.DefaultPath()
+}
+
+// getPool retourne le pool AD pour la session courante, ou le crée si nécessaire.
+func (s *Server) getPool(sess *session) (*ad.Pool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if pool, ok := s.adPools[sess.Utilisateur+"@"+sess.Domaine]; ok {
+		return pool, nil
+	}
+
+	pool, err := ad.NewPool(ad.Config{
+		Domain:        sess.Domaine,
+		Controller:    sess.Controleur,
+		Port:          636,
+		UseLDAPS:      true,
+		BindDN:        sess.Utilisateur,
+		BindPassword:  "", // TODO: récupérer depuis config sécurisée
+		BaseDN:        "",
+		TLSSkipVerify: true, // Phase 0 : certificats auto-signés
+		Timeout:       10 * time.Second,
+		MaxConns:      10,
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.adPools[sess.Utilisateur+"@"+sess.Domaine] = pool
+	return pool, nil
 }
 
 // session retourne la session liée à la requête, ou nil.
