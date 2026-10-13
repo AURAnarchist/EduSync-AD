@@ -108,6 +108,21 @@ var messages = map[string]map[string]string{
 		"audit.operateur":     "Opérateur",
 		"audit.recherche":     "Recherche",
 
+		// Password (détail — compléments)
+		"pwd.mode_titre":       "Choisir le mode",
+		"pwd.mode_ou_desc":     "Tous les utilisateurs d'une unité d'organisation",
+		"pwd.mode_groupe_desc": "Tous les membres d'un groupe de sécurité",
+		"pwd.mode_csv_desc":    "Liste d'identifiants depuis un fichier",
+		"pwd.ou_titre":         "OU cible",
+		"pwd.ou_label":         "DN de l'OU",
+		"pwd.groupe_titre":     "Groupe cible",
+		"pwd.groupe_label":     "DN du groupe",
+		"pwd.csv_titre":        "Fichier CSV",
+		"pwd.csv_label":        "Fichier CSV",
+		"pwd.csv_format":       "Colonnes : identifiant (ou sAMAccountName)",
+		"pwd.politique_eleve":  "Élèves (8 chars, 1 chiffre)",
+		"pwd.politique_personnel": "Personnel (12 chars, complexe)",
+
 		// Erreurs communes
 		"erreur.connexion_ad": "Impossible de se connecter à l'AD",
 		"erreur.fichier_trop_gros": "Fichier trop volumineux (max 10 Mo)",
@@ -219,6 +234,21 @@ var messages = map[string]map[string]string{
 		"erreur.csv_manquant": "No CSV file provided",
 		"erreur.csv_invalide": "Invalid CSV file",
 		"erreur.csv_vide": "CSV contains no data",
+
+		// Password (detail — compléments)
+		"pwd.mode_titre":       "Choose mode",
+		"pwd.mode_ou_desc":     "All users in an organizational unit",
+		"pwd.mode_groupe_desc": "All members of a security group",
+		"pwd.mode_csv_desc":    "List of identifiers from a file",
+		"pwd.ou_titre":         "Target OU",
+		"pwd.ou_label":         "OU DN",
+		"pwd.groupe_titre":     "Target group",
+		"pwd.groupe_label":     "Group DN",
+		"pwd.csv_titre":        "CSV File",
+		"pwd.csv_label":        "CSV File",
+		"pwd.csv_format":       "Columns: identifier (or sAMAccountName)",
+		"pwd.politique_eleve":  "Students (8 chars, 1 digit)",
+		"pwd.politique_personnel": "Staff (12 chars, complex)",
 	},
 }
 
