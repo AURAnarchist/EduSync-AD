@@ -51,6 +51,69 @@ var messages = map[string]map[string]string{
 		"col.resultat":  "Résultat",
 		"col.operateur": "Opérateur",
 		"col.detail":    "Détail",
+
+		// Users
+		"users.titre":        "Gestion des utilisateurs",
+		"users.sous_titre":   "Importer, créer et gérer les comptes.",
+		"users.import_titre": "Import CSV",
+		"users.import_desc":  "Chargez un fichier CSV pour créer des comptes en masse.",
+		"users.fichier_csv":  "Fichier CSV",
+		"users.csv_format":   "Colonnes attendues : prenom;nom;ou;classe;email (séparateur ;)",
+		"users.simuler":      "Simuler l'import",
+		"users.liste_titre":  "Liste des utilisateurs",
+		"users.liste_bientot": "Disponible prochainement.",
+
+		// Password
+		"pwd.titre":           "Réinitialisation mot de passe",
+		"pwd.sous_titre":      "Réinitialiser les mots de passe par OU, groupe ou CSV.",
+		"pwd.mode_ou":         "Par OU",
+		"pwd.mode_groupe":     "Par groupe",
+		"pwd.mode_csv":        "Par CSV",
+		"pwd.politique":       "Politique",
+		"pwd.forcer_changement": "Forcer changement au prochain logon",
+		"pwd.simuler":         "Simuler",
+		"pwd.executer":        "Exécuter",
+
+		// Migration
+		"migration.titre":       "Migration / Restructuration",
+		"migration.sous_titre":  "Déplacer les comptes entre OU (fin d'année, changement de classe).",
+		"migration.csv":         "Fichier CSV",
+		"migration.plan_titre":  "Plan de migration",
+		"migration.simuler":     "Simuler",
+		"migration.executer":    "Exécuter",
+
+		// Explorer
+		"explorer.titre":      "Explorateur AD",
+		"explorer.sous_titre": "Naviguer, rechercher, agir sur l'annuaire.",
+		"explorer.recherche":  "Recherche",
+		"explorer.arbre":      "Arborescence",
+		"explorer.actions":    "Actions",
+
+		// Export
+		"export.titre":        "Export / Étiquettes",
+		"export.sous_titre":   "Exporter CSV, PDF étiquettes (Avery L7160/L7163), trombinoscope.",
+		"export.format":       "Format",
+		"export.champs":       "Champs",
+		"export.modele":       "Modèle étiquettes",
+		"export.generer":      "Générer",
+
+		// Audit
+		"audit.titre":         "Journal d'actions",
+		"audit.sous_titre":    "Historique complet des opérations.",
+		"audit.filtres":       "Filtres",
+		"audit.date_debut":    "Date début",
+		"audit.date_fin":      "Date fin",
+		"audit.type_action":   "Type d'action",
+		"audit.resultat":      "Résultat",
+		"audit.operateur":     "Opérateur",
+		"audit.recherche":     "Recherche",
+
+		// Erreurs communes
+		"erreur.connexion_ad": "Impossible de se connecter à l'AD",
+		"erreur.fichier_trop_gros": "Fichier trop volumineux (max 10 Mo)",
+		"erreur.csv_manquant": "Aucun fichier CSV fourni",
+		"erreur.csv_invalide": "Fichier CSV illisible",
+		"erreur.csv_vide": "Le CSV ne contient aucune donnée",
 	},
 	"en": {
 		"app.nom":          "EduSync AD",
@@ -93,6 +156,69 @@ var messages = map[string]map[string]string{
 		"col.resultat":  "Result",
 		"col.operateur": "Operator",
 		"col.detail":    "Detail",
+
+		// Users
+		"users.titre":        "User management",
+		"users.sous_titre":   "Import, create and manage accounts.",
+		"users.import_titre": "CSV Import",
+		"users.import_desc":  "Upload a CSV file to create accounts in bulk.",
+		"users.fichier_csv":  "CSV File",
+		"users.csv_format":   "Expected columns: prenom;nom;ou;classe;email (separator ;)",
+		"users.simuler":      "Simulate import",
+		"users.liste_titre":  "User list",
+		"users.liste_bientot": "Coming soon.",
+
+		// Password
+		"pwd.titre":           "Password reset",
+		"pwd.sous_titre":      "Reset passwords by OU, group or CSV.",
+		"pwd.mode_ou":         "By OU",
+		"pwd.mode_groupe":     "By group",
+		"pwd.mode_csv":        "By CSV",
+		"pwd.politique":       "Policy",
+		"pwd.forcer_changement": "Force change at next logon",
+		"pwd.simuler":         "Simulate",
+		"pwd.executer":        "Execute",
+
+		// Migration
+		"migration.titre":       "Migration / Restructuring",
+		"migration.sous_titre":  "Move accounts between OUs (end of year, class change).",
+		"migration.csv":         "CSV File",
+		"migration.plan_titre":  "Migration plan",
+		"migration.simuler":     "Simulate",
+		"migration.executer":    "Execute",
+
+		// Explorer
+		"explorer.titre":      "AD Explorer",
+		"explorer.sous_titre": "Browse, search, act on the directory.",
+		"explorer.recherche":  "Search",
+		"explorer.arbre":      "Tree",
+		"explorer.actions":    "Actions",
+
+		// Export
+		"export.titre":        "Export / Labels",
+		"export.sous_titre":   "Export CSV, PDF labels (Avery L7160/L7163), photo directory.",
+		"export.format":       "Format",
+		"export.champs":       "Fields",
+		"export.modele":       "Label template",
+		"export.generer":      "Generate",
+
+		// Audit
+		"audit.titre":         "Action log",
+		"audit.sous_titre":    "Complete history of operations.",
+		"audit.filtres":       "Filters",
+		"audit.date_debut":    "Start date",
+		"audit.date_fin":      "End date",
+		"audit.type_action":   "Action type",
+		"audit.resultat":      "Result",
+		"audit.operateur":     "Operator",
+		"audit.recherche":     "Search",
+
+		// Common errors
+		"erreur.connexion_ad": "Unable to connect to AD",
+		"erreur.fichier_trop_gros": "File too large (max 10 MB)",
+		"erreur.csv_manquant": "No CSV file provided",
+		"erreur.csv_invalide": "Invalid CSV file",
+		"erreur.csv_vide": "CSV contains no data",
 	},
 }
 

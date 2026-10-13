@@ -16,13 +16,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
-	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -575,4 +573,282 @@ func mustSub(name string) fs.FS {
 		panic("ui: assets manquants: " + err.Error())
 	}
 	return sub
+}
+
+// requireAuth vérifie la session et injecte le pool AD dans le contexte.
+func (s *Server) requireAuth(handler func(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sess := s.session(r)
+		if sess == nil {
+			if r.Header.Get("HX-Request") == "true" {
+				w.Header().Set("HX-Redirect", "/login")
+				w.WriteHeader(http.StatusOK)
+			} else {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+			}
+			return
+		}
+
+		pool, err := s.getPool(sess)
+		if err != nil {
+			s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+			return
+		}
+
+		handler(w, r, sess, pool)
+	}
+}
+
+// ─── Page Utilisateurs ─────────────────────────────────────────────────
+
+func (s *Server) pageUsers(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	d := s.donnees(r, Tr(s.langue(r), "users.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+
+	// OU par défaut pour l'import
+	if cfg, err := config.Load(s.opts.ConfigPath); err == nil && cfg.OUParenteClasses != "" {
+		d.CheminConfig = cfg.OUParenteClasses
+	}
+
+	s.rendre(w, http.StatusOK, "users.html", d)
+}
+
+// usersImport charge un CSV et construit le plan d'import (simulation).
+func (s *Server) usersImport(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.fichier_trop_gros"))
+		return
+	}
+
+	file, _, err := r.FormFile("csv_file")
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.csv_manquant"))
+		return
+	}
+	defer file.Close()
+
+	// Parser CSV
+	reader := csv.NewReader(file)
+	reader.Comma = ';'
+	reader.FieldsPerRecord = -1
+
+	records, err := reader.ReadAll()
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.csv_invalide"))
+		return
+	}
+
+	if len(records) < 2 {
+		s.erreur(w, Tr(s.langue(r), "erreur.csv_vide"))
+		return
+	}
+
+	// Header → indices
+	header := records[0]
+	indices := make(map[string]int)
+	for i, h := range header {
+		indices[strings.TrimSpace(strings.ToLower(h))] = i
+	}
+
+	get := func(row []string, key string) string {
+		if idx, ok := indices[key]; ok && idx < len(row) {
+			return strings.TrimSpace(row[idx])
+		}
+		return ""
+	}
+
+	// Construire les lignes
+	type importRow struct {
+		Prenom, Nom, OU, Classe, Email string
+	}
+	var rows []importRow
+	for _, rec := range records[1:] {
+		rows = append(rows, importRow{
+			Prenom: get(rec, "prenom"),
+			Nom:    get(rec, "nom"),
+			OU:     get(rec, "ou"),
+			Classe: get(rec, "classe"),
+			Email:  get(rec, "email"),
+		})
+	}
+
+	// Simulation via pool
+	var simulated []models.GeneratedUser
+	for _, row := range rows {
+		// Utiliser la logique de génération d'identifiants
+		gu := models.GeneratedUser{
+			Source: models.RawUserRow{
+				Prenom: row.Prenom, Nom: row.Nom, OU: row.OU, Classe: row.Classe, Email: row.Email,
+			},
+			Identifiant: strings.ToLower(row.Prenom[0:1]) + "." + strings.ToLower(row.Nom),
+			MotDePasse:  "TempPass123!",
+			AdresseMail: row.Email,
+			OUCible:     row.OU,
+		}
+		if gu.OUCible == "" && row.Classe != "" {
+			gu.OUCible = "OU=" + row.Classe + ",OU=Eleves," + domaineToBaseDN(sess.Domaine)
+		}
+		simulated = append(simulated, gu)
+	}
+
+	// Rendre le template de simulation
+	s.rendreSimulationUsers(w, s.langue(r), simulated)
+}
+
+// domaineToBaseDN convertit "EDUSYNC.LOCAL" → "DC=EDUSYNC,DC=LOCAL".
+func domaineToBaseDN(domaine string) string {
+	parts := strings.Split(domaine, ".")
+	var dns []string
+	for _, p := range parts {
+		dns = append(dns, "DC="+p)
+	}
+	return strings.Join(dns, ",")
+}
+
+// ─── Users : simulation & exécution ────────────────────────────────────
+
+func (s *Server) usersSimulate(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: implémenter simulation complète avec pool.UserCreateSimulate
+	s.rendre(w, http.StatusOK, "users_simulate.html", s.donnees(r, "Simulation import"))
+}
+
+func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: implémenter exécution avec pool.UserCreate
+	s.rendre(w, http.StatusOK, "users_execute.html", s.donnees(r, "Exécution import"))
+}
+
+// ─── Page Mot de passe ─────────────────────────────────────────────────
+
+func (s *Server) pagePassword(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	d := s.donnees(r, Tr(s.langue(r), "pwd.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "password.html", d)
+}
+
+func (s *Server) passwordSimulate(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: simulation reset MDP bulk
+	s.rendre(w, http.StatusOK, "password_simulate.html", s.donnees(r, "Simulation reset MDP"))
+}
+
+func (s *Server) passwordExecute(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: exécution reset MDP bulk
+	s.rendre(w, http.StatusOK, "password_execute.html", s.donnees(r, "Exécution reset MDP"))
+}
+
+// ─── Page Migration ────────────────────────────────────────────────────
+
+func (s *Server) pageMigration(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	d := s.donnees(r, Tr(s.langue(r), "migration.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "migration.html", d)
+}
+
+func (s *Server) migrationPlan(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: construire plan depuis CSV
+	s.rendre(w, http.StatusOK, "migration_plan.html", s.donnees(r, "Plan migration"))
+}
+
+func (s *Server) migrationSimulate(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: simulation migration
+	s.rendre(w, http.StatusOK, "migration_simulate.html", s.donnees(r, "Simulation migration"))
+}
+
+func (s *Server) migrationExecute(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: exécution migration
+	s.rendre(w, http.StatusOK, "migration_execute.html", s.donnees(r, "Exécution migration"))
+}
+
+// ─── Page Explorateur ──────────────────────────────────────────────────
+
+func (s *Server) pageExplorer(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	d := s.donnees(r, Tr(s.langue(r), "explorer.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "explorer.html", d)
+}
+
+func (s *Server) explorerSearch(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	query := r.PostFormValue("q")
+	// TODO: pool.Search
+	s.rendre(w, http.StatusOK, "explorer_results.html", s.donnees(r, "Résultats: "+query))
+}
+
+func (s *Server) explorerTree(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: pool.BuildTree / GetSubTree
+	s.rendre(w, http.StatusOK, "explorer_tree.html", s.donnees(r, "Arborescence"))
+}
+
+// ─── Page Export ───────────────────────────────────────────────────────
+
+func (s *Server) pageExport(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	d := s.donnees(r, Tr(s.langue(r), "export.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "export.html", d)
+}
+
+func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: pool.ExportCSV
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", "attachment; filename=export.csv")
+	w.Write([]byte("sAMAccountName;displayName;mail\n"))
+}
+
+func (s *Server) exportPDF(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: pool.ExportLabelsPDF / ExportTrombinoscope
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", "attachment; filename=export.pdf")
+	w.Write([]byte("%PDF-1.4\n%...\n"))
+}
+
+// ─── Page Audit ────────────────────────────────────────────────────────
+
+func (s *Server) pageAudit(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	d := s.donnees(r, Tr(s.langue(r), "audit.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+
+	if s.journal != nil {
+		entries, _ := s.journal.List(audit.Filter{Limit: 50})
+		d.Actions = entries
+	}
+	s.rendre(w, http.StatusOK, "audit.html", d)
+}
+
+func (s *Server) auditFilter(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	// TODO: filtrage journal
+	s.rendre(w, http.StatusOK, "audit_results.html", s.donnees(r, "Audit filtré"))
+}
+
+// ─── Rendu simulation utilisateurs ────────────────────────────────────
+
+func (s *Server) rendreSimulationUsers(w http.ResponseWriter, langue string, users []models.GeneratedUser) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<table class="w-full text-sm"><thead><tr class="bg-slate-50 dark:bg-slate-800"><th class="px-4 py-2 text-left">Prénom</th><th class="px-4 py-2 text-left">Nom</th><th class="px-4 py-2 text-left">Identifiant</th><th class="px-4 py-2 text-left">OU cible</th><th class="px-4 py-2 text-left">Mot de passe</th><th class="px-4 py-2 text-left">Erreur</th></tr></thead><tbody>`)
+	for _, u := range users {
+		b.WriteString(fmt.Sprintf(`<tr><td class="px-4 py-2">%s</td><td class="px-4 py-2">%s</td><td class="px-4 py-2 font-mono">%s</td><td class="px-4 py-2">%s</td><td class="px-4 py-2 font-mono">%s</td><td class="px-4 py-2 text-red-600">%s</td></tr>`,
+			u.Source.Prenom, u.Source.Nom, u.Identifiant, u.OUCible, u.MotDePasse, u.Erreur))
+	}
+	b.WriteString(`</tbody></table>`)
+	w.Write([]byte(b.String()))
 }
