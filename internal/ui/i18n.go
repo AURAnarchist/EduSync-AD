@@ -74,14 +74,6 @@ var messages = map[string]map[string]string{
 		"pwd.simuler":         "Simuler",
 		"pwd.executer":        "Exécuter",
 
-		// Migration
-		"migration.titre":       "Migration / Restructuration",
-		"migration.sous_titre":  "Déplacer les comptes entre OU (fin d'année, changement de classe).",
-		"migration.csv":         "Fichier CSV",
-		"migration.plan_titre":  "Plan de migration",
-		"migration.simuler":     "Simuler",
-		"migration.executer":    "Exécuter",
-
 		// Explorer
 		"explorer.titre":      "Explorateur AD",
 		"explorer.sous_titre": "Naviguer, rechercher, agir sur l'annuaire.",
@@ -122,6 +114,29 @@ var messages = map[string]map[string]string{
 		"pwd.csv_format":       "Colonnes : identifiant (ou sAMAccountName)",
 		"pwd.politique_eleve":  "Élèves (8 chars, 1 chiffre)",
 		"pwd.politique_personnel": "Personnel (12 chars, complexe)",
+
+		// Migration
+		"migration.titre":         "Migration / Restructuration",
+		"migration.sous_titre":    "Déplacer les comptes entre OU (fin d'année, changement de classe).",
+		"migration.csv":           "Fichier CSV",
+		"migration.csv_format":    "Colonnes : identifiant;ou_source;ou_cible (séparateur ;)",
+		"migration.etape1":        "1. Charger le CSV",
+		"migration.etape1_desc":   "Fichier avec identifiant, OU source et OU cible",
+		"migration.charger":       "Charger le plan",
+		"migration.plan_titre":    "Plan de migration",
+		"migration.total":         "{{count}} comptes",
+		"migration.col_identifiant": "Identifiant",
+		"migration.col_nom":       "Nom complet",
+		"migration.col_ou_source": "OU source",
+		"migration.col_ou_cible":  "OU cible",
+		"migration.col_action":    "Action",
+		"migration.simuler":       "Simuler",
+		"migration.executer":      "Exécuter",
+		"migration.confirmer":     "Confirmer",
+		"migration.annuler":       "Annuler",
+		"migration.simulation_titre": "Simulation de la migration",
+		"migration.simulation_desc": "Vérifiez les déplacements avant de confirmer.",
+		"migration.col_detail":    "Détail",
 
 		// Erreurs communes
 		"erreur.connexion_ad": "Impossible de se connecter à l'AD",
@@ -194,14 +209,6 @@ var messages = map[string]map[string]string{
 		"pwd.simuler":         "Simulate",
 		"pwd.executer":        "Execute",
 
-		// Migration
-		"migration.titre":       "Migration / Restructuring",
-		"migration.sous_titre":  "Move accounts between OUs (end of year, class change).",
-		"migration.csv":         "CSV File",
-		"migration.plan_titre":  "Migration plan",
-		"migration.simuler":     "Simulate",
-		"migration.executer":    "Execute",
-
 		// Explorer
 		"explorer.titre":      "AD Explorer",
 		"explorer.sous_titre": "Browse, search, act on the directory.",
@@ -228,12 +235,28 @@ var messages = map[string]map[string]string{
 		"audit.operateur":     "Operator",
 		"audit.recherche":     "Search",
 
-		// Common errors
-		"erreur.connexion_ad": "Unable to connect to AD",
-		"erreur.fichier_trop_gros": "File too large (max 10 MB)",
-		"erreur.csv_manquant": "No CSV file provided",
-		"erreur.csv_invalide": "Invalid CSV file",
-		"erreur.csv_vide": "CSV contains no data",
+		// Migration
+		"migration.titre":         "Migration / Restructuring",
+		"migration.sous_titre":    "Move accounts between OUs (end of year, class change).",
+		"migration.csv":           "CSV File",
+		"migration.csv_format":    "Columns: identifier;source_ou;target_ou (separator ;)",
+		"migration.etape1":        "1. Load CSV",
+		"migration.etape1_desc":   "File with identifier, source OU and target OU",
+		"migration.charger":       "Load plan",
+		"migration.plan_titre":    "Migration plan",
+		"migration.total":         "{{count}} accounts",
+		"migration.col_identifiant": "Identifier",
+		"migration.col_nom":       "Full name",
+		"migration.col_ou_source": "Source OU",
+		"migration.col_ou_cible":  "Target OU",
+		"migration.col_action":    "Action",
+		"migration.simuler":       "Simulate",
+		"migration.executer":      "Execute",
+		"migration.confirmer":     "Confirm",
+		"migration.annuler":       "Cancel",
+		"migration.simulation_titre": "Migration simulation",
+		"migration.simulation_desc": "Review moves before confirming.",
+		"migration.col_detail":    "Detail",
 
 		// Password (detail — compléments)
 		"pwd.mode_titre":       "Choose mode",
@@ -249,6 +272,13 @@ var messages = map[string]map[string]string{
 		"pwd.csv_format":       "Columns: identifier (or sAMAccountName)",
 		"pwd.politique_eleve":  "Students (8 chars, 1 digit)",
 		"pwd.politique_personnel": "Staff (12 chars, complex)",
+
+		// Common errors
+		"erreur.connexion_ad": "Unable to connect to AD",
+		"erreur.fichier_trop_gros": "File too large (max 10 MB)",
+		"erreur.csv_manquant": "No CSV file provided",
+		"erreur.csv_invalide": "Invalid CSV file",
+		"erreur.csv_vide": "CSV contains no data",
 	},
 }
 
