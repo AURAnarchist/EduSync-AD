@@ -38,11 +38,11 @@ type SearchResultEntry struct {
 
 // SearchFilter décrit les critères de recherche.
 type SearchFilter struct {
-	Query       string // texte libre (prénom, nom, identifiant, email)
-	ObjectTypes []string // ["user", "group", "ou"] - vide = tous
-	BaseDN      string // OU de départ (vide = BaseDN du pool)
-	PageSize    int
-	Cookie      string // pour pagination
+	Query           string   // texte libre (prénom, nom, identifiant, email)
+	ObjectTypes     []string // ["user", "group", "ou"] - vide = tous
+	BaseDN          string   // OU de départ (vide = BaseDN du pool)
+	PageSize        int
+	Cookie          string // pour pagination
 	IncludeDisabled bool
 }
 

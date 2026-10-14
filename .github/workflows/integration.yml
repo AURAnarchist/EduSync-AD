@@ -1,0 +1,122 @@
+name: Integration Tests (Samba AD)
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'internal/ad/**'
+      - 'internal/testutil/**'
+      - 'Dockerfile.samba-ad'
+      - 'provision-ad.sh'
+      - '.github/workflows/integration.yml'
+  pull_request:
+    paths:
+      - 'internal/ad/**'
+      - 'internal/testutil/**'
+      - 'Dockerfile.samba-ad'
+      - 'provision-ad.sh'
+      - '.github/workflows/integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Go — Tests d'intégration AD (container Samba)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Nécessaire pour les containers Docker (testcontainers + Samba)
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Build Samba AD test image
+        run: |
+          docker build -f Dockerfile.samba-ad -t edusync-ad-samba .
+        timeout-minutes: 10
+
+      - name: Run integration tests
+        env:
+          AD_TEST: "1"  # active les tests d'intégration (voir internal/ad/pool_integration_test.go)
+        run: |
+          go test -tags=integration -v ./internal/ad/... -run "TestPool" -timeout 10m
+        timeout-minutes: 20
+
+      - name: Run integration tests (explorer, migration, password)
+        env:
+          AD_TEST: "1"
+        run: |
+          go test -tags=integration -v ./internal/ad/... -run "TestExplorer|TestMigration|TestPassword" -timeout 10m
+        timeout-minutes: 20
+
+      - name: Run integration tests (user, group, OU CRUD)
+        env:
+          AD_TEST: "1"
+        run: |
+          go test -tags=integration -v ./internal/ad/... -run "TestUser|TestGroup|TestOU" -timeout 10m
+        timeout-minutes: 20
+
+      - name: Test with LDAP+StartTLS (port 389)
+        env:
+          AD_TEST: "1"
+        run: |
+          go test -tags=integration -v ./internal/ad/... -run "TestPoolStartTLS" -timeout 5m
+        timeout-minutes: 10
+
+  integration-multisite:
+    name: Go — Tests multisite (2 domaines AD)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: integration
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Samba AD test image
+        run: |
+          docker build -f Dockerfile.samba-ad -t edusync-ad-samba .
+        timeout-minutes: 10
+
+      - name: Run multisite integration tests
+        env:
+          AD_TEST: "1"
+        run: |
+          go test -tags=integration -v ./internal/ad/... -run "TestMultiSite" -timeout 15m
+        timeout-minutes: 30

@@ -350,8 +350,8 @@ func TestPasswordValidate(t *testing.T) {
 		pwd      string
 		shouldOK bool
 	}{
-		{"Abcdefgh123!", true}, // 12 chars
-		{"abcdefgh123!", false}, // pas de majuscule
+		{"Abcdefgh123!", true},   // 12 chars
+		{"abcdefgh123!", false},  // pas de majuscule
 		{"Abcdefghijkl!", false}, // pas de chiffre
 		{"Abcdefgh12345", false}, // pas de spécial
 		{"Ab1!", false},          // trop court

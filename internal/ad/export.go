@@ -20,8 +20,8 @@ import (
 
 	"github.com/boombuler/barcode"
 	"github.com/boombuler/barcode/qr"
-	"github.com/jung-kurt/gofpdf"
 	"github.com/go-ldap/ldap/v3"
+	"github.com/jung-kurt/gofpdf"
 )
 
 // ExportFormat définit le format de sortie.
@@ -75,21 +75,21 @@ var labelSpecs = map[LabelTemplate]labelSpec{
 type ExportField string
 
 const (
-	FieldSAMAccountName ExportField = "sAMAccountName"
-	FieldDisplayName    ExportField = "displayName"
-	FieldGivenName      ExportField = "givenName"
-	FieldSN             ExportField = "sn"
-	FieldEmail          ExportField = "mail"
-	FieldOU             ExportField = "ou"
+	FieldSAMAccountName    ExportField = "sAMAccountName"
+	FieldDisplayName       ExportField = "displayName"
+	FieldGivenName         ExportField = "givenName"
+	FieldSN                ExportField = "sn"
+	FieldEmail             ExportField = "mail"
+	FieldOU                ExportField = "ou"
 	FieldUserPrincipalName ExportField = "userPrincipalName"
-	FieldDescription    ExportField = "description"
-	FieldEmployeeID     ExportField = "employeeID"
-	FieldDepartment     ExportField = "department"
-	FieldTitle          ExportField = "title"
-	FieldTelephone      ExportField = "telephoneNumber"
-	FieldMobile         ExportField = "mobile"
-	FieldPassword       ExportField = "password" // seulement si stocké (opt-in)
-	FieldQRCode         ExportField = "qr_code"  // génère QR code dans PDF
+	FieldDescription       ExportField = "description"
+	FieldEmployeeID        ExportField = "employeeID"
+	FieldDepartment        ExportField = "department"
+	FieldTitle             ExportField = "title"
+	FieldTelephone         ExportField = "telephoneNumber"
+	FieldMobile            ExportField = "mobile"
+	FieldPassword          ExportField = "password" // seulement si stocké (opt-in)
+	FieldQRCode            ExportField = "qr_code"  // génère QR code dans PDF
 )
 
 // AllExportFields liste tous les champs disponibles.
@@ -109,13 +109,13 @@ type ExportParams struct {
 	Separator     rune // pour CSV
 	Users         []*User
 	// Pour trombinoscope
-	PhotoAttribute string // ex: "jpegPhoto", "thumbnailPhoto"
-	PhotoMaxSize   int    // ko
-	Title          string // titre du document
-	FontSize       float64
-	TextColor      color.RGBA
+	PhotoAttribute  string // ex: "jpegPhoto", "thumbnailPhoto"
+	PhotoMaxSize    int    // ko
+	Title           string // titre du document
+	FontSize        float64
+	TextColor       color.RGBA
 	BackgroundColor color.RGBA
-	QRCodeData     func(*User) string // données pour QR code par utilisateur
+	QRCodeData      func(*User) string // données pour QR code par utilisateur
 }
 
 // Validate vérifie les paramètres.

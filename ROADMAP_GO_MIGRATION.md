@@ -1,12 +1,20 @@
 # 🗺️ Feuille de route — Migration EduSync-AD : Python/PyQt6 → Go/Wails
 
-> **Version** : 1.1 — 13 octobre 2026
+> **Version** : 1.2 — 14 octobre 2026
 > **Objectif** : Réécrire entièrement EduSync-AD en Go (backend + UI desktop via Wails) **sans perte de fonctionnalité**, avec une architecture testable et "IA-ready" (l'IA peut tester, détecter les erreurs et patcher).
 > **Timeline** : ~14 semaines, qualité > vitesse.
+>
+> **⚠️ Priorité revue le 14 octobre 2026** (décision utilisateur) :
+> **1) finir le logiciel en Go** (tous les modules de l'inventaire §4),
+> **2) sortir une release alpha**, **3) ensuite seulement**, campagne de
+> tests (unitaires, intégration container Samba, e2e). Les tests ne sont
+> pas supprimés — ils sont **décalés après l'alpha**. L'installation
+> testcontainers/integration est livrée en parallèle mais n'est plus le
+> jalon bloquant.
 
 ---
 
-## 0. État d'avancement (mise à jour : 13 octobre 2026)
+## 0. État d'avancement (mise à jour : 14 octobre 2026)
 
 > Statut vérifié **dans le code et les tests**, pas dans les intentions.
 
@@ -17,11 +25,15 @@
 | 1-2 | Starter kit : repo Go, `go.mod`, `Taskfile.yml`, CI, `CLAUDE.md`/`AGENTS.md`, cross-build | ✅ Livré | `go.mod`, `Taskfile.yml`, `.github/workflows/ci.yml`, `build/cross-build.sh` |
 | 3-4 | Config chiffrée multi-profil, lecture des fichiers Python | ✅ Livré (testé) | `internal/config` (+ fixture `testdata/config_python.json` généré par Python) |
 | 3-4 | Crypto compatible Python (AES-256-GCM) | ✅ Livré (testé) | `internal/crypto`, avec vecteur d'interopérabilité Python → Go |
-| 5-6 | **Core AD : pool de connexions + TLS + SASL/GSSAPI** | ⬜ À faire | `internal/ad` (dossier créé, vide) |
+| 5-6 | **Core AD : pool de connexions + TLS + SASL/GSSAPI** | ✅ Livré | `internal/ad/pool.go` (pool, health check, LDAPS/StartTLS, `AuthMethod` simple/NTLM/SASL-GSSAPI + client `gokrb5`) |
 | 7-8 | Modèles domaine + audit SQLite | ✅ Livré (testé) | `internal/models`, `internal/audit` (schéma identique à Python, append-only) |
-| 9-10 | Testutil container Samba + fixtures | 🔨 En cours | `Dockerfile.samba-ad`, `provision-ad.sh`, `docs/AD_TEST_ENV.md` |
+| 9-10 | Testutil container Samba + fixtures | ✅ Livré (hors campagne de tests) | `internal/testutil/samba.go` (testcontainers-go), `Dockerfile.samba-ad`, `provision-ad.sh`, `docs/AD_TEST_ENV.md` |
 | 11-12 | CLI squelette | ✅ Livré (testé) | `cmd/edusync-cli` : `version`, `paths`, `config show`, `audit list`, `connect` (DNS + TCP + TLS) |
 | 13-14 | Wails v3 + HTMX/Alpine/Tailwind embeddé | ✅ Livré (testé) | `cmd/edusync-ad`, `internal/ui`, `web/` — login, dashboard, thème clair/sombre, i18n fr/en + gabarits `users`, `password`, `migration` |
+
+> Workflow `.github/workflows/integration.yml` ajouté (jobs
+> `integration` / `integration-multisite`, portée `AD_TEST=1`) — exécution
+> décalée à la campagne de tests post-alpha.
 
 ### Phase 1 (amorcée côté UI — semaine 3)
 
@@ -29,6 +41,11 @@
 |---|---|---|
 | Réinitialisation MDP | 🔨 Gabarit HTMX + routes + i18n fr/en livrés (logique AD à brancher) | `web/templates/password.html`, `internal/ui/server.go`, `internal/ui/i18n.go` |
 | Migration / restructuration | 🔨 Gabarit HTMX + routes + i18n fr/en livrés (logique AD à brancher) | `web/templates/migration.html`, `internal/ui/server.go`, `internal/ui/i18n.go` |
+| Création de comptes / Arrivées | ⬜ Backend `internal/ad/user.go` prêt (CRUD + Simulate), handler + UI à brancher | `internal/ad/user.go`, `web/templates/users.html` |
+| Gestion des départs | ⬜ À implémenter | — |
+| Explorateur AD | ⬜ Backend `internal/ad/explorer.go` prêt, UI à brancher | `internal/ad/explorer.go` |
+| Export CSV/PDF | ⬜ Backend `internal/ad/export.go` prêt (Avery, QR, trombinoscope), UI à brancher | `internal/ad/export.go` |
+| Journal d'actions | ⬜ Backend `internal/audit` prêt, UI à brancher | `internal/audit` |
 
 ### Mesures constatées (Linux amd64 — Go 1.27.2, Wails v3.0.0-beta.28, WebKitGTK 2.54.1)
 
@@ -213,15 +230,15 @@ edusync-ad/
 
 | Module | Fonctionnalités | Statut |
 |---|---|---|
-| **Connexion AD** | LDAPS par défaut (636), fallback LDAP explicite avec avertissement, certificat CA custom, pool de connexions, Kerberos/GSSAPI, auto-discovery DC | ⬜ |
-| **Création de comptes / Arrivées** | Import CSV (encodage + séparateur auto), génération identifiants/MDP/mail, résolution doublons (incrément), vérification AD existants, export CSV étiquettes | ⬜ |
-| **Migration (restructuration)** | Via CSV (prénom/nom/équipe) ou UI (sélection OU), déplacement AD + groupes auto, résolution par prénom/nom | 🔨 |
+| **Connexion AD** | LDAPS par défaut (636), fallback LDAP explicite avec avertissement, certificat CA custom, pool de connexions, Kerberos/GSSAPI, auto-discovery DC | ✅ `internal/ad/pool.go` (auto-discovery : partiel) |
+| **Création de comptes / Arrivées** | Import CSV (encodage + séparateur auto), génération identifiants/MDP/mail, résolution doublons (incrément), vérification AD existants, export CSV étiquettes | 🔨 Backend user prêt, handler/UI à brancher |
+| **Migration (restructuration)** | Via CSV (prénom/nom/équipe) ou UI (sélection OU), déplacement AD + groupes auto, résolution par prénom/nom | 🔨 Backend prêt (`migration.go`), UI à brancher |
 | **Gestion des départs** | Désactivation immédiate ou archivage + purge planifiée (délai configurable, 30 j par défaut) | ⬜ |
-| **Réinitialisation MDP** | Par OU, groupe AD ou CSV, politiques différées (élèves/personnels), forçage changement à la prochaine connexion | 🔨 |
-| **Explorateur AD** | Arborescence OUs/groupes, panneau central unifié, clic droit complet (modif, move, MDP, groupes, suppr), recherche temps réel | ⬜ |
-| **Export (CSV / Étiquettes PDF)** | Sélection OU ± sous-OU, champs cochables (incl. MDP mémorisés), PDF Avery L7160/L7163, QR codes, couleurs pastel | ⬜ |
-| **Journal d'actions** | Filtres date/type/résultat/domaine/opérateur, export CSV, SQLite append-only | ⬜ |
-| **Mode simulation** | Toute écriture AD = prévisualisation modifiable avant validation | ⬜ |
+| **Réinitialisation MDP** | Par OU, groupe AD ou CSV, politiques différées (élèves/personnels), forçage changement à la prochaine connexion | 🔨 Backend prêt (`password.go`), UI à brancher |
+| **Explorateur AD** | Arborescence OUs/groupes, panneau central unifié, clic droit complet (modif, move, MDP, groupes, suppr), recherche temps réel | 🔨 Backend prêt (`explorer.go`), UI à brancher |
+| **Export (CSV / Étiquettes PDF)** | Sélection OU ± sous-OU, champs cochables (incl. MDP mémorisés), PDF Avery L7160/L7163, QR codes, couleurs pastel | 🔨 Backend prêt (`export.go`), UI à brancher |
+| **Journal d'actions** | Filtres date/type/résultat/domaine/opérateur, export CSV, SQLite append-only | 🔨 Backend prêt (`internal/audit`), UI à brancher |
+| **Mode simulation** | Toute écriture AD = prévisualisation modifiable avant validation | 🔨 Pattern `simulation.go` prêt, câblage UI à faire |
 
 ### Phase v4.0 (livrée en Python)
 
@@ -301,7 +318,15 @@ Les tests d'intégration couvrent explicitement les points où Samba ≠ Windows
 
 ## 6. Roadmap par phases
 
-### Phase 0 : Fondations (Semaines 1-2)
+> **Ordre révisé (14 oct. 2026)** : priorité = **finir le logiciel Go**
+> (Phases 1 → 2 → 3 partiels) puis **release alpha**, la campagne de
+> tests complète (§7) intervenant **après l'alpha**. Les tests ne
+> bloquent plus l'avancement des modules : chaque module est livré avec
+> ses tests existants verts (`task test`), la montée en puissance des
+> tests (intégration Samba, e2e Playwright, charge) est un chantier
+> séparé post-alpha.
+
+### Phase 0 : Fondations (Semaines 1-2) — ✅ livrée
 
 | Jour | Livrable | Critère de passage |
 |---|---|---|
@@ -317,15 +342,18 @@ Les tests d'intégration couvrent explicitement les points où Samba ≠ Windows
 
 ### Phase 1 : Modules core v1.x (Semaines 3-7)
 
-*Méthode par module : tests d'intégration d'abord → implémentation → UI HTMX → bindings CLI → validation manuelle.*
+*Méthode par module (révisée) : implémentation → branchement UI HTMX →
+bindings CLI → `task lint && task test` verts → commit. Les tests
+d'intégration dédiés (container Samba) sont écrits dans la campagne
+post-alpha, sauf si un test existant couvre déjà le cas.*
 
-| Semaine | Module | Points clés à tester |
+| Semaine | Module | Points clés (validation manuelle + `task test`) |
 |---|---|---|
-| **3** | **Création de comptes** | 1500 users < 30 s, doublons gérés, politiques MDP respectées, PDF valide |
-| **4** | **Migration / restructuration** | 500 users cross-OU < 60 s, groupes mis à jour, dry-run exact |
-| **5** | **Gestion des départs** | 200 users archivés < 10 s, purge planifiée idempotente |
-| **6** | **Réinitialisation MDP** | 1000 resets < 45 s, politiques appliquées, MDP conformes ANSSI |
-| **7** | **Explorateur AD** | Navigation fluide 10k+ objets, recherche < 500 ms, actions atomiques |
+| **3** | **Création de comptes** | Import CSV (encodage/séparateur auto), doublons gérés, politiques MDP, export étiquettes |
+| **4** | **Migration / restructuration** | Déplacement cross-OU, groupes auto, dry-run exact |
+| **5** | **Gestion des départs** | Archivage + purge planifiée idempotente |
+| **6** | **Réinitialisation MDP** | Politiques appliquées, MDP conformes ANSSI, forçage changement |
+| **7** | **Explorateur AD** | Navigation fluide, recherche temps réel, actions atomiques |
 
 **En parallèle (semaines 5-7)** : **Export CSV/PDF**, **Journal d'actions**, **Mode simulation** (transverses à tous les modules).
 
@@ -349,6 +377,12 @@ Les tests d'intégration couvrent explicitement les points où Samba ≠ Windows
 ---
 
 ## 7. Stratégie de tests "IA-ready"
+
+> **Reportée après la release alpha** (décision du 14 oct. 2026). Le
+> socle existe déjà : `internal/testutil/samba.go`, tests
+> `-tags=integration` dans `tests/integration/`, workflow
+> `integration.yml`. La campagne complète (couverture par module, e2e
+> Playwright, charge) est un chantier post-alpha dédié.
 
 ```
 tests/
@@ -496,6 +530,13 @@ Ajoute le support multisite (multi-domaine/forêt).
 
 ## 12. Critères d'acceptation global
 
+> **Jalon alpha (avant ces critères complets)** : la **release alpha** est
+> éligible dès que l'inventaire Phase Core v1.x (§4) est câblé de bout en
+> bout (UI + CLI), que `task lint && task test && task test:python` sont
+> verts et que `release.yml` produit les binaires multi-cibles. Les
+> critères ci-dessous (intégration/e2e en CI, benchmarks, couverture)
+> conditionnent la **release stable 1.0**, pas l'alpha.
+
 La migration est terminée quand **tous** ces critères sont réunis :
 
 - [ ] **Zéro perte fonctionnelle** : chaque module de l'inventaire (§4) fonctionne en Go avec feature parity vérifiée.
@@ -511,20 +552,32 @@ La migration est terminée quand **tous** ces critères sont réunis :
 
 ## Prochaines étapes
 
-1. **Terminer la Phase 0** :
-   - livrer l'AD de test (`Dockerfile.samba-ad`, `provision-ad.sh`,
-     `docs/AD_TEST_ENV.md`) puis `internal/testutil/samba.go` et les
-     premiers tests d'intégration `-tags=integration` ;
-   - implémenter `internal/ad` (pool de connexions, LDAPS + CA custom,
-     SASL/GSSAPI, retry/backoff) — jours 5-6 de la Phase 0 ;
-   - ajouter le workflow `integration.yml` pour les tests AD réels.
-2. **Poursuivre la Phase 1** (semaines 3-7) : modules core v1.x, un par un,
-   tests d'abord, en suivant le prompt « nouveau module » de `CLAUDE.md`.
-3. **Aligner le budget binaire** : l'app desktop pèse 17,2 MB (cible 15 MB) —
-   à traiter en Phase 3 (packaging) ou par build tags Wails.
+**Priorité 1 — finir le logiciel Go (jusqu'à l'alpha) :**
+
+1. **Semaine 3** : module **Création de comptes / Arrivées**
+   (handler HTTP + bindings + `web/templates/users.html`) :
+   import CSV, génération identifiants/MDP/mail, doublons, étiquettes.
+2. **Semaines 4-7** : modules **Migration**, **Départs**, **Reset MDP**,
+   **Explorateur** — backend souvent déjà prêt, reste le câblage
+   UI + CLI.
+3. **Transverses** : Export CSV/PDF, Journal, Simulation branchés sur
+   l'UI.
+4. **Release alpha** : `release.yml` sur tag `v0.x.0-alpha`, binaires
+   multi-cibles, notes de version (« feature parity Phase Core v1.x »).
+
+**Priorité 2 — après l'alpha :**
+
+5. Campagne de tests (§7) : intégration Samba complète (`AD_TEST=1`),
+   e2e Playwright, benchmarks vs Python, couverture.
+6. Phase 2 (multisite, RBAC, portail, API) puis Phase 3 (IA, RGPD,
+   packaging).
+7. Aligner le budget binaire : l'app desktop pèse 17,2 MB (cible
+   15 MB) — à traiter au packaging.
 
 > Historique : la Phase 0 (hors pool AD et testutil) a été livrée le
 > 12 octobre 2026 — starter kit, config, crypto, modèles, audit, CLI, UI.
 > Les 13 octobre 2026, les gabarits UI « reset MDP » et « migration »
-> (routes + i18n fr/en) ont amorcé la Phase 1 côté interface, en attente du
-> branchement complet du cœur AD.
+> (routes + i18n fr/en) ont amorcé la Phase 1 côté interface.
+> Le 14 octobre 2026 : pool AD (TLS/SASL-GSSAPI), `internal/testutil`
+> (testcontainers Samba) et le workflow `integration.yml` ont été livrés,
+> et la priorité a été revue : **logiciel d'abord, alpha, tests ensuite**.

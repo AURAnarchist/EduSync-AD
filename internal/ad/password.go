@@ -19,28 +19,28 @@ import (
 
 // PasswordPolicy décrit une politique de mot de passe (reflet internal/models).
 type PasswordPolicy struct {
-	Length            int
-	RequireUppercase  bool
-	RequireDigits     bool
-	RequireSpecial    bool
-	ForbidUserInfo    bool // interdit prénom/nom/identifiant dans le MDP
-	MaxAgeDays        int  // 0 = pas d'expiration
-	HistorySize       int  // nb de MDP précédents interdits
-	MinAgeDays        int  // délai minimum avant changement
-	ComplexityRegex   string
+	Length           int
+	RequireUppercase bool
+	RequireDigits    bool
+	RequireSpecial   bool
+	ForbidUserInfo   bool // interdit prénom/nom/identifiant dans le MDP
+	MaxAgeDays       int  // 0 = pas d'expiration
+	HistorySize      int  // nb de MDP précédents interdits
+	MinAgeDays       int  // délai minimum avant changement
+	ComplexityRegex  string
 }
 
 // DefaultStudentPolicy politique par défaut élèves (8 chars, pas de majuscule obligatoire).
 func DefaultStudentPolicy() PasswordPolicy {
 	return PasswordPolicy{
-		Length:         8,
+		Length:           8,
 		RequireUppercase: false,
-		RequireDigits:  true,
-		RequireSpecial: false,
-		ForbidUserInfo: true,
-		MaxAgeDays:     0,
-		HistorySize:    5,
-		MinAgeDays:     1,
+		RequireDigits:    true,
+		RequireSpecial:   false,
+		ForbidUserInfo:   true,
+		MaxAgeDays:       0,
+		HistorySize:      5,
+		MinAgeDays:       1,
 	}
 }
 
@@ -174,24 +174,24 @@ func randInt(n int) (int, error) {
 
 // PasswordResetParams décrit une opération de réinitialisation.
 type PasswordResetParams struct {
-	TargetDN       string        // DN de l'utilisateur (ou vide si par OU/groupe/CSV)
-	OU             string        // OU pour réinitialisation en masse
-	GroupDN        string        // Groupe pour réinitialisation en masse
-	NewPassword    string        // mot de passe spécifique (vide = généré)
-	Policy         PasswordPolicy
-	ForceChange    bool          // userMustChangePassword au prochain logon
-	NotifyUser     bool          // envoyer par mail (à brancher plus tard)
-	DryRun         bool          // simulation seulement
+	TargetDN    string // DN de l'utilisateur (ou vide si par OU/groupe/CSV)
+	OU          string // OU pour réinitialisation en masse
+	GroupDN     string // Groupe pour réinitialisation en masse
+	NewPassword string // mot de passe spécifique (vide = généré)
+	Policy      PasswordPolicy
+	ForceChange bool // userMustChangePassword au prochain logon
+	NotifyUser  bool // envoyer par mail (à brancher plus tard)
+	DryRun      bool // simulation seulement
 }
 
 // PasswordResetResult décrit le résultat d'une réinitialisation.
 type PasswordResetResult struct {
-	UserDN        string
+	UserDN         string
 	SAMAccountName string
-	DisplayName   string
-	NewPassword   string
-	Generated     bool
-	Error         string
+	DisplayName    string
+	NewPassword    string
+	Generated      bool
+	Error          string
 }
 
 // PasswordResetBulk réinitialise les MDP pour tous les utilisateurs d'une OU
@@ -375,23 +375,23 @@ func (p *Pool) PasswordGetInfo(ctx context.Context, dn string) (*PasswordInfo, e
 	}
 
 	return &PasswordInfo{
-		DN:              dn,
-		PwdLastSet:      time.Unix((pwdLastSet-116444736000000000)/10000000, 0), // FILETIME → time.Time
-		NeverExpires:    (uac & 65536) != 0,
-		UserMustChange:  pwdLastSet == 0,
-		MaxPwdAgeDays:   0, // lire depuis domain policy si nécessaire
-		MinPwdAgeDays:   0,
-		HistoryLength:   0,
+		DN:             dn,
+		PwdLastSet:     time.Unix((pwdLastSet-116444736000000000)/10000000, 0), // FILETIME → time.Time
+		NeverExpires:   (uac & 65536) != 0,
+		UserMustChange: pwdLastSet == 0,
+		MaxPwdAgeDays:  0, // lire depuis domain policy si nécessaire
+		MinPwdAgeDays:  0,
+		HistoryLength:  0,
 	}, nil
 }
 
 // PasswordInfo informations sur l'état du mot de passe.
 type PasswordInfo struct {
-	DN              string
-	PwdLastSet      time.Time
-	NeverExpires    bool
-	UserMustChange  bool
-	MaxPwdAgeDays   int
-	MinPwdAgeDays   int
-	HistoryLength   int
+	DN             string
+	PwdLastSet     time.Time
+	NeverExpires   bool
+	UserMustChange bool
+	MaxPwdAgeDays  int
+	MinPwdAgeDays  int
+	HistoryLength  int
 }
