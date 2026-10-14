@@ -208,92 +208,91 @@ func TestUserCreateDisabled(t *testing.T) {
 }
 
 // TestUserCreateValidate vérifie la validation des paramètres.
+// Pur test unitaire : ne contacte pas l'AD (pas de container requis).
 func TestUserCreateValidate(t *testing.T) {
-	testutil.WithSambaAD(t, func(ctx context.Context, pool *ad.Pool) {
-		cas := []struct {
-			name    string
-			params  ad.UserCreateParams
-			wantErr bool
-		}{
-			{
-				name: "SAMAccountName manquant",
-				params: ad.UserCreateParams{
-					UserPrincipalName: "x@EDUSYNC.LOCAL", DisplayName: "X", GivenName: "X", SN: "X",
-					InitialPassword: "Pass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
-				},
-				wantErr: true,
+	cas := []struct {
+		name    string
+		params  ad.UserCreateParams
+		wantErr bool
+	}{
+		{
+			name: "SAMAccountName manquant",
+			params: ad.UserCreateParams{
+				UserPrincipalName: "x@EDUSYNC.LOCAL", DisplayName: "X", GivenName: "X", SN: "X",
+				InitialPassword: "Pass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
 			},
-			{
-				name: "UPN manquant",
-				params: ad.UserCreateParams{
-					SAMAccountName: "x", DisplayName: "X", GivenName: "X", SN: "X",
-					InitialPassword: "Pass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
-				},
-				wantErr: true,
+			wantErr: true,
+		},
+		{
+			name: "UPN manquant",
+			params: ad.UserCreateParams{
+				SAMAccountName: "x", DisplayName: "X", GivenName: "X", SN: "X",
+				InitialPassword: "Pass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
 			},
-			{
-				name: "DisplayName manquant",
-				params: ad.UserCreateParams{
-					SAMAccountName: "x", UserPrincipalName: "x@EDUSYNC.LOCAL", GivenName: "X", SN: "X",
-					InitialPassword: "Pass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
-				},
-				wantErr: true,
+			wantErr: true,
+		},
+		{
+			name: "DisplayName manquant",
+			params: ad.UserCreateParams{
+				SAMAccountName: "x", UserPrincipalName: "x@EDUSYNC.LOCAL", GivenName: "X", SN: "X",
+				InitialPassword: "Pass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
 			},
-			{
-				name: "GivenName manquant",
-				params: ad.UserCreateParams{
-					SAMAccountName: "x", UserPrincipalName: "x@EDUSYNC.LOCAL", DisplayName: "X", SN: "X",
-					InitialPassword: "Pass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
-				},
-				wantErr: true,
+			wantErr: true,
+		},
+		{
+			name: "GivenName manquant",
+			params: ad.UserCreateParams{
+				SAMAccountName: "x", UserPrincipalName: "x@EDUSYNC.LOCAL", DisplayName: "X", SN: "X",
+				InitialPassword: "Pass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
 			},
-			{
-				name: "SN manquant",
-				params: ad.UserCreateParams{
-					SAMAccountName: "x", UserPrincipalName: "x@EDUSYNC.LOCAL", DisplayName: "X", GivenName: "X",
-					InitialPassword: "PassPass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
-				},
-				wantErr: true,
+			wantErr: true,
+		},
+		{
+			name: "SN manquant",
+			params: ad.UserCreateParams{
+				SAMAccountName: "x", UserPrincipalName: "x@EDUSYNC.LOCAL", DisplayName: "X", GivenName: "X",
+				InitialPassword: "PassPass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
 			},
-			{
-				name: "Mot de passe manquant",
-				params: ad.UserCreateParams{
-					SAMAccountName: "x", UserPrincipalName: "x@EDUSYNC.LOCAL", DisplayName: "X", GivenName: "X", SN: "X",
-					OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
-				},
-				wantErr: true,
+			wantErr: true,
+		},
+		{
+			name: "Mot de passe manquant",
+			params: ad.UserCreateParams{
+				SAMAccountName: "x", UserPrincipalName: "x@EDUSYNC.LOCAL", DisplayName: "X", GivenName: "X", SN: "X",
+				OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
 			},
-			{
-				name: "OU manquante",
-				params: ad.UserCreateParams{
-					SAMAccountName: "x", UserPrincipalName: "x@EDUSYNC.LOCAL", DisplayName: "X", GivenName: "X", SN: "X",
-					InitialPassword: "Pass123!",
-				},
-				wantErr: true,
+			wantErr: true,
+		},
+		{
+			name: "OU manquante",
+			params: ad.UserCreateParams{
+				SAMAccountName: "x", UserPrincipalName: "x@EDUSYNC.LOCAL", DisplayName: "X", GivenName: "X", SN: "X",
+				InitialPassword: "Pass123!",
 			},
-			{
-				name: "Valide",
-				params: ad.UserCreateParams{
-					SAMAccountName: "valid01", UserPrincipalName: "valid01@EDUSYNC.LOCAL",
-					DisplayName: "Valid 01", GivenName: "Valid", SN: "User01",
-					InitialPassword: "Pass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
-				},
-				wantErr: false,
+			wantErr: true,
+		},
+		{
+			name: "Valide",
+			params: ad.UserCreateParams{
+				SAMAccountName: "valid01", UserPrincipalName: "valid01@EDUSYNC.LOCAL",
+				DisplayName: "Valid 01", GivenName: "Valid", SN: "User01",
+				InitialPassword: "Pass123!", OU: "OU=Eleves,DC=EDUSYNC,DC=LOCAL",
 			},
-		}
+			wantErr: false,
+		},
+	}
 
-		for _, tc := range cas {
-			t.Run(tc.name, func(t *testing.T) {
-				err := tc.params.Validate()
-				if tc.wantErr && err == nil {
-					t.Error("devrait retourner une erreur")
-				}
-				if !tc.wantErr && err != nil {
-					t.Errorf("ne devrait pas retourner d'erreur: %v", err)
-				}
-			})
-		}
-	})
+	for _, tc := range cas {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.params.Validate()
+			if tc.wantErr && err == nil {
+				t.Error("devrait retourner une erreur")
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("ne devrait pas retourner d'erreur: %v", err)
+			}
+		})
+	}
 }
 
 // TestUserCreateBulkCSV simule un import CSV de 100 utilisateurs.
