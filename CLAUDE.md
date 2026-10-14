@@ -12,7 +12,7 @@ Le dépôt contient **deux implémentations** de la même application :
 | Stack | État | Où |
 |---|---|---|
 | **Python / PyQt6** | publiée (1.17.1), version de production | `src/edusync_ad/`, `tests/core/` |
-| **Go / Wails v3** | migration en cours — Phase 0 (starter kit livré) | `cmd/`, `internal/`, `web/` |
+| **Go / Wails v3** | migration en cours — Phase 0 livrée, câblage du Core en cours | `cmd/`, `internal/`, `web/` |
 
 La cible est une réécriture **sans perte fonctionnelle** en Go, testable et
 pilotable par l'IA. Tant que la migration n'est pas terminée, les deux stacks
@@ -101,16 +101,26 @@ _ = s.journal.Record(entree)     // jamais de Delete ni d'UPDATE
 - **Go** : `go test ./...` — paquets `internal/*`, `cmd/*` (pas de réseau,
   pas de container requis, chemins redirigés dans `t.TempDir()`).
 - **Python** : `.venv/bin/pytest -q` (~757 tests).
-- **AD réel** : `task ad:start` (container Samba AD DC, `docs/AD_TEST_ENV.md`)
-  — réservé aux tests d'intégration `//go:build integration` à venir.
+- **AD réel** : `task ad:start` puis `AD_TEST=1 go test ./internal/ad/...`
+  (container Samba AD DC, `docs/AD_TEST_ENV.md`) — socle livré
+  (`internal/testutil`, `tests/integration/`) ; la campagne complète est
+  déclenchée **après l'alpha** (voir la priorité 3 de la roadmap).
 - **Benchmarks** : `go test -bench=. ./internal/...`.
 
 ## État de la migration (mise à jour à chaque livraison)
 
-Voir la section « État d'avancement » de `ROADMAP_GO_MIGRATION.md`.
-En résumé : Phase 0 en cours — fondations, config, crypto, audit, CLI,
-UI Wails/HTMX livrées et testées ; reste le pool de connexions AD, l'AD de
-test automatisé, les modules de la Phase 1.
+Voir la section « État d'avancement » (§0) de `ROADMAP_GO_MIGRATION.md`
+(version 2.0, 14 octobre 2026).
+
+En résumé : **Phase 0 livrée** (config, crypto, modèles, audit, pool AD
+TLS/SASL, CLI, UI Wails/HTMX, testutil Samba). Ordre des priorités
+décidé le 14/10/2026 : **1) finir le logiciel en Go** (migration
+complète M1→M32, inventaire §4 — en cours : câblage du Core, voir le
+tableau « constat réel dans le code » du §0), **2) alpha Windows
+(Setup.exe) + Linux (AppImage)**, **3) campagne de tests**. Les tests
+dédédiés (intégration Samba, e2e, benchmarks) sont décalés après
+l'alpha ; la boucle `task lint && task test` reste obligatoire à chaque
+livraison.
 
 ## Prompts réutilisables
 
