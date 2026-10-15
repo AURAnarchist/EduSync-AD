@@ -1,37 +1,38 @@
 # 🗺️ Feuille de route — Migration EduSync-AD : Python/PyQt6 → Go/Wails
 
-> **Version** : 2.0 — 14 octobre 2026
+> **Version** : 3.0 — 15 octobre 2026
 > **Objectif** : réécrire **toutes** les fonctionnalités d'EduSync-AD en Go
-> (backend + UI desktop Wails) **sans perte de fonctionnalité**, publier une
-> **release alpha Windows + Linux**, puis déclencher la **campagne de tests**.
+> (backend + UI desktop Wails) **sans perte de fonctionnalité**, **sortir une
+> première alpha dès le Core câblé (M1 → M11)**, puis **livrer les modules
+> avancés un par un, chacun avec sa propre release**.
 >
-> **Priorités ordonnées (décision utilisateur, 14 octobre 2026)** :
+> **Priorités ordonnées (décision utilisateur, 15 octobre 2026)** :
 >
-> 1. **Finir le logiciel en Go** — migration complète (Core v1.x **et** tous
->    les modules avancés, inventaire §4), **sans lancer les phases de test**
->    dédiées.
-> 2. **Sortir une alpha** — version **Windows** (`EduSyncAD-Setup.exe`) et
->    version **Linux** (AppImage + `.tar.gz`).
-> 3. **Ensuite seulement**, la campagne de tests (unitaires par module,
->    intégration container Samba, e2e, benchmarks vs Python).
+> 1. **Finir le Core (M1 → M11)** — câblage UI de bout en bout ; la logique
+>    métier existe **déjà** dans `internal/ad/` (voir le constat §0).
+> 2. **Alpha 1 dès que M11 est atteint** — Windows
+>    (`EduSyncAD-Setup.exe`) + Linux (AppImage + `.tar.gz`). Ensuite :
+>    **un module avancé livré = une release** (M12 → release, M13 → release,
+>    … jusqu'à M32).
+> 3. **Campagne de tests** (unitaires par module, intégration container
+>    Samba, e2e, benchmarks vs Python) **intégrée à la boucle de chaque
+>    release** — elle ne bloque plus la première alpha.
 >
 > Ce qui **ne change pas** : la boucle d'hygiène reste obligatoire à chaque
-> livraison (`task lint && task test`, `AGENTS.md`). Ce qui est décalé **après
-> l'alpha**, ce sont les *phases de test dédiées* — campagne d'intégration AD,
-> e2e, benchmarks, couverture. Aucun test existant n'est supprimé ni
-> désactivé.
+> livraison (`task lint && task test && task test:python`, `AGENTS.md`).
+> Aucun test existant n'est supprimé ni désactivé.
 
 ---
 
 ## Table des matières
 
-1. [État d'avancement](#0-état-davancement-mise-à-jour--14-octobre-2026)
+1. [État d'avancement](#0-état-davancement-mise-à-jour--15-octobre-2026)
 2. [Contexte et motivations](#1-contexte-et-motivations)
 3. [Décisions validées](#2-décisions-validées)
 4. [Architecture cible](#3-architecture-cible)
 5. [Inventaire — la référence « logiciel fini »](#4-inventaire--la-référence-logiciel-fini)
 6. [Environnement de test AD](#5-environnement-de-test-ad)
-7. [Roadmap : les trois priorités dans l'ordre](#6-roadmap--les-trois-priorités-dans-lordre)
+7. [Roadmap — Core d'abord, puis une release par module](#6-roadmap--core-dabord-puis-une-release-par-module)
 8. [Stratégie de tests « IA-ready » (priorité 3)](#7-stratégie-de-tests-ia-ready--priorité-3)
 9. [Migration des données existantes](#8-migration-des-données-existantes)
 10. [Packaging et cross-build](#9-packaging-et-cross-build)
@@ -41,7 +42,7 @@
 
 ---
 
-## 0. État d'avancement (mise à jour : 14 octobre 2026)
+## 0. État d'avancement (mise à jour : 15 octobre 2026)
 
 > Statut vérifié **dans le code et les tests**, pas dans les intentions.
 
@@ -58,12 +59,12 @@
 | 11-12 | CLI squelette | ✅ Livré (testé) | `cmd/edusync-cli` : `version`, `paths`, `config show`, `audit list`, `connect` (DNS + TCP + TLS) |
 | 13-14 | Wails v3 + HTMX/Alpine/Tailwind embeddé | ✅ Livré (testé) | `cmd/edusync-ad`, `internal/ui`, `web/` — login, dashboard, thème clair/sombre, i18n fr/en |
 
-### Priorité 1 en cours — câblage du Core (constat réel dans le code, 14/10)
+### Priorité 1 en cours — câblage du Core (constat réel dans le code, 15/10)
 
 | Module | Réel dans le code | Manque pour le dire « fini » |
 |---|---|---|
 | Login / dashboard / thème / i18n | ✅ Fonctionnel et testé | — |
-| Connexion AD (pool) | ✅ Pool livré | ⚠️ `BindPassword` en dur vide (`server.go:438`, TODO : config chiffrée) ; erreurs de connexion à afficher proprement dans l'UI |
+| Connexion AD (M9) | ✅ **Livré et testé** (commit `86414c0`) | — (`BindPassword` câblé, repli LDAPS→LDAP + avertissement, erreurs fr/en, pool nettoyé à la déconnexion) |
 | Création de comptes (M1) | 🔨 Page + import réel (`usersImport`) | `usersSimulate` / `usersExecute` = TODO ; gabarits `users_simulate.html`, `users_execute.html` absents |
 | Réinitialisation MDP (M4) | 🔨 Gabarit `password.html` + routes | `passwordSimulate` / `passwordExecute` = TODO ; 2 gabarits absents |
 | Migration / restructuration (M2) | 🔨 Gabarit `migration.html` + routes | `migrationPlan` / `migrationSimulate` / `migrationExecute` = TODO ; 3 gabarits absents |
@@ -73,20 +74,21 @@
 | Gestion des départs (M3) | ⬜ **Module absent** | Backend `internal/ad/depart.go`, route, gabarit, CLI, i18n (`models.DepartRow` existe déjà) |
 | Paramètres globaux (M8) | ⬜ **Page absente** | 4 onglets (comptes, mots de passe, apparence, délégation), routes, gabarit, i18n |
 | Mode simulation (M11) | 🔨 Pattern `simulation.go` prêt | Câler `Validate → Simulate → Execute → Audit` sur tous les modules ci-dessus |
-| Mise à jour intégrée (M10) | ⬜ Absente en Go | Auto-update + vérification `.sha256` (livrée avec le chantier alpha, §6 P2) |
+| Mise à jour intégrée (M10) | ⬜ Absente en Go | Auto-update + vérification `.sha256` (livrée avec le chantier alpha, §6 étape 2.1) |
 
-### Mesures constatées (Linux amd64 — Go 1.27.2, Wails v3.0.0-beta.29, WebKitGTK 2.54.1)
+### Mesures constatées (Linux amd64 — Go 1.27.2, Wails v3.0.0-beta.29) — vérifiées le 15/10/2026
 
 | Critère | Cible | Réel |
 |---|---|---|
-| `gofmt -l cmd internal web` | rien | **rien** sur le code livré ⚠️ (2 fichiers WIP non formattés : `arrivals*.go`) |
+| `gofmt -l cmd internal web` | rien | **rien** ✅ |
 | `go vet ./...` | vert | **vert** ✅ |
-| Tests Go | — | **7 paquets verts** sur 10 testés ; `internal/ad` en chantier (WIP module Arrivées, 2 tests rouges le 14/10) |
+| Tests Go | — | **8 paquets verts** ; 3 paquets sans test (`cmd/edusync-ad`, `internal/testutil`, `web`) — `go test ./...` en **0,8 s** ✅ |
+| Tests Python | vert | **843 tests passés** en **3,0 s** ✅ |
 | CLI cross-compilée | toutes cibles | **5 cibles** produites en une commande (`./build/cross-build.sh cli`) |
 | Taille CLI (`-s -w`) | 8-12 MB | **9,5 MB** ✅ |
 | Taille app desktop (`-s -w`) | < 15 MB | **17,2 MB** ⚠️ (glue cgo/WebKit — optimisation au chantier alpha) |
 | CI | vertes | `ci.yml` : job Go (fmt/vet/test/build/smoke) + job Python (pytest) |
-| Release | alpha Win + Linux | ⬜ `release.yml` construit **encore la version Python** (PyInstaller + Flatpak) — à réécrire en `release-go.yml` (§6 P2) |
+| Release | alpha Win + Linux | ⬜ `release.yml` construit **encore la version Python** (PyInstaller + Flatpak) — à réécrire en `release-go.yml` (§6 P1) |
 
 ### Décisions d'implémentation (à conserver)
 
@@ -143,8 +145,9 @@
 
 | Sujet | Décision | Rationale |
 |---|---|---|
-| **Ordre des priorités** | **1) finir le logiciel en Go → 2) alpha Windows + Linux → 3) campagne de tests** | Décision utilisateur du 14/10/2026 ; les tests dédiés ne bloquent plus l'avancement, ils suivent l'alpha |
-| **Périmètre avant alpha** | **Migration complète** : Core v1.x (M1-M11) **et** modules avancés (M12-M32, §4) | Décision utilisateur du 14/10/2026 : « la migration complète du logiciel de Python vers Go avec toutes les fonctionnalités, mais sans lancer les phases de test » |
+| **Ordre des priorités** | **1) câbler le Core M1→M11 → 2) alpha 1 → 3) un module = une release (M12→M32) → 4) campagne de tests intégrée** | Décision utilisateur du 15/10/2026 : sortir une alpha dès que le Core est prêt, puis livrer au fur et à mesure |
+| **Périmètre de l'alpha 1** | **Core v1.x (M1 → M11) uniquement** | Décision utilisateur du 15/10/2026 : avoir une application utilisable tôt ; les modules avancés (M12 → M32) suivent, **un par release** |
+| **Rythme des releases** | **Un module avancé livré = une release** (`v0.1.x` correctifs, `v0.2.0` par jalon) | Décision utilisateur du 15/10/2026 |
 | **Formats alpha** | Windows **`EduSyncAD-Setup.exe`** (InnoSetup) + Linux **AppImage** + **`.tar.gz`** | Décision utilisateur du 14/10/2026 |
 | Workflow de release | `release-go.yml` dédié aux tags **`v0.*`** ; `release.yml` (Python) inchangé pour les tags **`v1.*`** | Ne jamais casser le canal de release de la version Python publiée (1.17.1) |
 | OS de dev principal | **Linux** | Cross-compile Go natif, containers Docker/Podman, Wails dev mode |
@@ -207,7 +210,7 @@ edusync-ad/
 │   ├── ci.yml                 # Test, lint, build multi-arch
 │   ├── integration.yml        # Tests AD réels (container Samba) — exécution en priorité 3
 │   ├── release.yml            # Tags v1.* → release Python (inchangé)
-│   └── release-go.yml         # Tags v0.* → alpha Go (§6 P2)
+│   └── release-go.yml         # Tags v0.* → releases Go (§6 étape 2.1)
 ├── Taskfile.yml               # Commandes dev unifiées (task setup/dev/test/build)
 ├── go.mod / go.sum
 ├── CLAUDE.md                  # Contexte IA : patterns, règles, prompts
@@ -251,10 +254,10 @@ edusync-ad/
 | **M7 — Journal d'actions** | Filtres date/type/résultat/domaine/opérateur, export CSV, SQLite append-only | 🔨 liste OK, filtres TODO, gabarit absent |
 | **M8 — Paramètres globaux** | 4 onglets : Comptes, Mots de passe, Apparence, Délégation | ⬜ **absent** (thème/langue partiel via header) |
 | **M9 — Connexion LDAPS/LDAP** | LDAPS prioritaire, repli LDAP avec avertissement, CA custom, mémorisation chiffrée | 🔨 pool livré, `BindPassword` à câbler (TODO) |
-| **M10 — Mise à jour intégrée** | Vérification, téléchargement, installation, redémarrage auto, somme de contrôle | ⬜ absent en Go (livré avec le chantier alpha, §6 P2) |
+| **M10 — Mise à jour intégrée** | Vérification, téléchargement, installation, redémarrage auto, somme de contrôle | ⬜ absent en Go (livré avec le chantier alpha, §6 étape 2.1) |
 | **M11 — Mode simulation** | Toute écriture AD = prévisualisation modifiable avant validation | 🔨 pattern `simulation.go` prêt, câblage général à faire |
 
-### 4.2 Modules avancés (M12 → M24) — Priorité 1, Lot B
+### 4.2 Modules avancés (M12 → M24) — Priorité 2, Lot B
 
 | Module | Fonctionnalités | Statut Go |
 |---|---|---|
@@ -272,7 +275,7 @@ edusync-ad/
 | **M23 — Modèles de groupes** | Modèles classe/personnel/services, instanciation 1-clic, duplication/import | ⬜ |
 | **M24 — Étiquettes avancées (Label Studio)** | Éditeur WYSIWYG, badges/cartes, trombinoscope photo A4/A3, envoi par mail | ⬜ |
 
-### 4.3 Modules v4.0 (M25 → M32) — Priorité 1, Lot C
+### 4.3 Modules v4.0 (M25 → M32) — Priorité 2, Lot C
 
 | Module | Fonctionnalités | Statut Go |
 |---|---|---|
@@ -356,29 +359,31 @@ Les tests d'intégration (priorité 3) couvrent explicitement les points où Sam
 
 ---
 
-## 6. Roadmap — les trois priorités dans l'ordre
+## 6. Roadmap — Core d'abord, puis une release par module
 
-> **Ordre arrêté le 14 octobre 2026** : **P1 logiciel Go complet → P2 alpha
-> Windows + Linux → P3 campagne de tests.**
+> **Stratégie arrêtée le 15 octobre 2026** : **on sort une première alpha dès
+> que le Core (M1 → M11) est câblé**, puis **chaque module avancé livré
+> (M12 → M32) donne lieu à sa propre release**.
 >
-> - Chaque livraison de la P1 passe `task lint && task test && task test:python`
+> - Chaque livraison passe `task lint && task test && task test:python`
 >   (boucle d'hygiène, non négociable — `AGENTS.md`).
-> - **Aucune campagne de tests dédiée ne bloque un lot de la P1** : tests
->   d'intégration Samba, e2e, benchmarks et objectifs de couverture sont
->   regroupés en P3, après l'alpha.
+> - La **campagne de tests** (intégration Samba, e2e, benchmarks) accompagne
+>   les releases ; elle ne bloque plus la première alpha.
 > - La **version Python 1.17.1 reste en production** pendant toute la
 >   migration : zéro rupture pour les utilisateurs.
 
-### Priorité 1 — Finir le logiciel en Go
+### Priorité 1 — Finir le Core (M1 → M11)
 
 #### Lot A — Câblage de bout en bout du Core (M1 → M11)
 
-*Méthode par module : backend existant → handlers HTTP réels → gabarit →
-clés i18n fr/en → commande CLI → `task lint && task test` verts → commit.*
+*Méthode par module (cérémonie allégée, décision du 15/10/2026) : backend
+(souvent **déjà écrit**, cf. §0) → handlers HTTP réels → gabarit HTMX →
+clés i18n fr/en → `task lint && task test` verts → commit. Les commandes CLI
+(A11) et la revue parity (A13) sont regroupées en fin de lot.*
 
 | # | Module | Travail réellement à faire (constat §0) |
 |---|---|---|
-| A1 | Connexion AD (M9) | Câbler `BindPassword` depuis la config chiffrée (TODO `server.go:438`), afficher les erreurs de connexion, avertissement repli LDAP 389 |
+| ~~A1~~ | ~~Connexion AD (M9)~~ | ✅ **Livré** (commit `86414c0`) : `BindPassword` câblé, repli LDAPS→LDAP + avertissement, erreurs fr/en |
 | A2 | Création de comptes (M1) | Implémenter `usersSimulate` / `usersExecute` (TODO) + 2 gabarits, doublons, export étiquettes depuis la page |
 | A3 | Réinitialisation MDP (M4) | `passwordSimulate` / `passwordExecute` + 2 gabarits, politiques élèves/personnels, forçage changement |
 | A4 | Migration (M2) | `migrationPlan` (depuis CSV), `migrationSimulate`, `migrationExecute` + 3 gabarits, groupes auto, dry-run exact |
@@ -392,49 +397,19 @@ clés i18n fr/en → commande CLI → `task lint && task test` verts → commit.
 | A12 | Progression / annulation | Barre de progression + `context.Context` annulable sur les opérations de masse (équivalent T0, §4.4) |
 | A13 | Revue parity Core | Checklist §4.1 = ✅ vérifiée **dans le code**, i18n fr+en sur toutes les clés ajoutées |
 
-**Sortie Lot A** : depuis la page de login jusqu'au journal, chaque module
-Core fonctionne de bout en bout (UI + CLI) contre l'AD de test
-(`task ad:start`, vérification **manuellement**, pas une campagne).
+**Sortie du Lot A = Alpha 1** : depuis le login jusqu'au journal, chaque
+module Core fonctionne de bout en bout contre l'AD de test (`task ad:start`,
+vérification **manuellement**, pas une campagne). **C'est la première alpha
+publiée** — la chaîne de release est décrite ci-dessous.
 
-#### Lot B — Modules avancés (M12 → M24) + cache (T2)
-
-| # | Module(s) | Points clés |
-|---|---|---|
-| B1 | M13 profils, M16 heures, M15 scripts | Attributs AD classiques, appliqués en masse à la création/migration |
-| B2 | M17 homedirs, M14 quotas, M18 espaces de classe | Partages/NTFS/FSRM — prérequis serveur Windows côté client, gardez-le documenté |
-| B3 | T2 cache AD | Cache SQLite OU/groupes/users, invalidation TTL + `uSNChanged` — fluidité explorateur |
-| B4 | M12 photos | Import masse + cadrage, vignettes explorateur, intégration étiquettes (B8) |
-| B5 | M22 imports/exports avancés | Import LDAP, export LDIF/vCard, publipostage HTML |
-| B6 | M19 M365, M20 Exchange | Graph + On-prem/Online — tests manuels documentés (pas d'AD de test cloud) |
-| B7 | M21 RDS | Collections, RemoteApp, UPD/FSLogix |
-| B8 | M24 Label Studio + M23 modèles de groupes | Éditeur WYSIWYG, trombinoscope A4/A3, instanciation 1-clic |
-
-#### Lot C — Modules v4.0 (M25 → M32) + coffre
-
-| # | Module(s) | Points clés |
-|---|---|---|
-| C1 | M25 multisite | Modèle `Site`, config chiffrée par site, sélecteur header, pool par site, colonne `site_id` au journal |
-| C2 | M26 RBAC | 5 rôles, portées OU/groupe, **garde-fou sur chaque écriture AD**, journal par opérateur |
-| C3 | Coffre MDP + M32 sauvegarde | AES-256 local, backup ZIP chiffré, restore 1-clic, migrations vN→vN+1 |
-| C4 | M27 portail auto-service | Serveur web stdlib (Go stdlib), code mail, PBKDF2 usage unique, RBAC, audit `utilisateur="portail"` |
-| C5 | M28 API REST + webhooks | OpenAPI, webhooks SIS, sync bidirectionnelle |
-| C6 | M29 IA + M30 conformité/sécurité | Anomalies, nettoyage fin d'année, RGPD/MFA/PSO/signature |
-| C7 | M31 DFS/IIS/WebDAV/FTP | Priorité basse, livré en dernier |
-
-#### Clôture de la Priorité 1 — « logiciel fini » (Porte 1, §12)
-
-1. **`edusync-cli migrate --from-python`** : lit config/coffre/journal
-   Python, valide, écrit au format Go, sauvegarde l'original en `.bak` (§8).
-2. Checklist **§4 complète = ✅** vérifiée dans le code (M1 → M32, T2,
-   transverses) — pas dans les intentions.
-3. `gofmt -l`, `go vet`, `go test ./...`, `.venv/bin/pytest -q` tous verts.
-4. Roadmap + `CLAUDE.md` reflètent le code.
-
-### Priorité 2 — Release alpha Windows + Linux (≈ 1 à 2 semaines)
+### Priorité 2 — Chaîne de release : Alpha 1, puis un module = une release
 
 > **Format validé** : Windows **`EduSyncAD-Setup.exe`** (InnoSetup) ;
-> Linux **AppImage** + **`.tar.gz`** (binaire brut). Chaque artefact avec
-> son `.sha256`.
+> Linux **AppImage** + **`.tar.gz`**. Chaque artefact avec son `.sha256`.
+> Le squelette `release-go.yml` est posé **une fois, avec l'alpha 1**, puis
+> réutilisé pour chaque module livré.
+
+#### Étape 2.1 — Poser la chaîne de release (avec l'alpha 1)
 
 | # | Travail | Détail |
 |---|---|---|
@@ -444,32 +419,86 @@ Core fonctionne de bout en bout (UI + CLI) contre l'AD de test
 | P2.4 | **M10 — mise à jour intégrée** | L'updater Go vérifie le `.sha256` de la release, télécharge, installe, redémarre (modèle = `core/updater.py`) — validé contre la première alpha |
 | P2.5 | **Checklist pré-alpha** (vérifications **manuelles**, pas une campagne) | ① `task lint && task test && task test:python` verts ② app démarre sous Xvfb (smoke `ci.yml`) ③ app **démarre sur Windows 10/11** réel ④ installation + désinstallation propres ⑤ relecture d'une config Python existante sans reconfiguration ⑥ connexion LDAPS réelle contre `task ad:start` ⑦ thème + i18n fr/en sur les modules livrés |
 | P2.6 | **Notes de version alpha** | Périmètre couvert (§4), limites connues, installation (Setup.exe / `chmod +x` AppImage), appel à testeurs, avertissement « logiciel en cours de migration, la 1.17.1 reste la version de production » |
-| P2.7 | **Publication** | Tag `v0.1.0-alpha.1` → `release-go.yml` → 3 artefacts + 3 `.sha256` en release **pré-release** GitHub |
+| P2.7 | **Publication Alpha 1** | Tag **`v0.1.0-alpha.1`** → `release-go.yml` → 3 artefacts + 3 `.sha256` en release **pré-release** GitHub |
 
-**Sortie P2** : une alpha téléchargeable et installable sur **Windows** et
-**Linux**, avec notes de version et sommes de contrôle.
+**Sortie de l'étape 2.1** : une alpha téléchargeable et installable sur
+**Windows** et **Linux** (Core M1 → M11), avec notes de version et sommes de
+contrôle.
 
-### Priorité 3 — Campagne de tests (après l'alpha)
+#### Étape 2.2 — Livrer les modules avancés, un par release
+
+> **Un module livré = une release.** Dès qu'un module passe la boucle
+> d'hygiène, on incrémente la version, on pose le tag `v0.*` et
+> `release-go.yml` produit les artefacts + `.sha256`. La numérotation
+> ci-dessous est **indicative** (l'ordre de livraison peut être ajusté), le
+> principe « un module = une release » ne l'est pas.
+
+##### Lot B — Modules avancés (M12 → M24) + cache (T2) — releases `v0.2.0` → `v0.15.0`
+
+| Release | Module | Points clés |
+|---|---|---|
+| v0.2.0 | M13 Profils utilisateurs | Itinérant/local/obligatoire par OU ou groupe, variables `%USERNAME%` `%SAM%` `%OU%` |
+| v0.3.0 | M16 Heures de connexion | Grille 24h × 7j, préréglages, attribut `logonHours` |
+| v0.4.0 | M15 Scripts logon/logoff | Éditeur bat/powershell/vbs, variables, déploiement `scriptPath`/GPO |
+| v0.5.0 | M17 Dossiers personnels | Création auto `\\srv\homes\%USERNAME%`, droits NTFS, lettre lecteur |
+| v0.6.0 | M14 Quotas de disque (FSRM) | Quota par OU/groupe, application auto, rapport CSV — prérequis serveur Windows à documenter |
+| v0.7.0 | M18 Espaces partagés par classe | Partage SMB + NTFS à la création du groupe de classe, sync membres ↔ droits |
+| v0.8.0 | T2 Cache AD | Cache SQLite OU/groupes/users, invalidation TTL + `uSNChanged` — fluidité explorateur |
+| v0.9.0 | M12 Photos d'identité | Import masse + cadrage, vignettes explorateur, intégration étiquettes |
+| v0.10.0 | M22 Import/Export avancés | Import LDAP, export LDIF/vCard, publipostage HTML |
+| v0.11.0 | M19 Microsoft 365 / Entra ID | Graph + on-prem/online — tests manuels documentés (pas d'AD de test cloud) |
+| v0.12.0 | M20 Exchange | Boîtes aux lettres, aliases/proxy, policies, quotas |
+| v0.13.0 | M21 RDS / Bureau à distance | Collections, RemoteApp, UPD/FSLogix |
+| v0.14.0 | M23 Modèles de groupes | Instanciation 1-clic, duplication/import |
+| v0.15.0 | M24 Étiquettes avancées (Label Studio) | Éditeur WYSIWYG, badges/cartes, trombinoscope A4/A3, envoi par mail |
+
+##### Lot C — Modules v4.0 (M25 → M32) + coffre — releases `v0.16.0` → `v0.24.0`
+
+| Release | Module | Points clés |
+|---|---|---|
+| v0.16.0 | M25 Multisite | Modèle `Site`, config chiffrée par site, sélecteur header, pool par site, colonne `site_id` au journal |
+| v0.17.0 | M26 RBAC (délégation) | 5 rôles, portées OU/groupe, **garde-fou sur chaque écriture AD**, journal par opérateur |
+| v0.18.0 | Coffre MDP | AES-256 local (machines admin), jamais sur l'AD |
+| v0.19.0 | M32 Sauvegarde / Restauration | Backup ZIP chiffré, restore 1-clic, migrations vN→vN+1 |
+| v0.20.0 | M27 Portail auto-service | Serveur web stdlib, code mail, PBKDF2 usage unique, RBAC, audit `utilisateur="portail"` |
+| v0.21.0 | M28 API REST + Webhooks | OpenAPI, webhooks SIS, sync bidirectionnelle |
+| v0.22.0 | M29 IA / Assistant | Anomalies, nettoyage fin d'année, identifiants intelligents, analyse logs |
+| v0.23.0 | M30 Conformité & sécurité | RGPD + droit à l'oubli, MFA admin, session unique, PSO, signature exports |
+| v0.24.0 | M31 DFS / IIS / WebDAV / FTP | Priorité basse, livré en dernier |
+
+#### Clôture de la Priorité 2 — « logiciel fini » (parité §4, §12)
+
+1. **`edusync-cli migrate --from-python`** : lit config/coffre/journal
+   Python, valide, écrit au format Go, sauvegarde l'original en `.bak` (§8).
+2. Checklist **§4 complète = ✅** vérifiée dans le code (M1 → M32, T2,
+   transverses) — pas dans les intentions.
+3. `gofmt -l`, `go vet`, `go test ./...`, `.venv/bin/pytest -q` tous verts.
+4. Roadmap + `CLAUDE.md` reflètent le code.
+
+### Priorité 3 — Campagne de tests (intégrée à partir de l'alpha)
 
 > Le socle existe déjà : `internal/testutil/samba.go`, `tests/integration/`,
-> workflow `integration.yml`, smoke `ci.yml`. Détail §7.
+> workflow `integration.yml`, smoke `ci.yml`. Détail §7. La campagne
+> **accompagne les releases** (elle démarre avec l'alpha 1) au lieu d'être
+> un chantier final bloquant.
 
 | # | Chantier | Contenu |
 |---|---|---|
-| P3.1 | Couverture unitaire par module | Un test **qui échouerait sans l'implémentation** par fonctionnalité de §4 (M1 → M32) ; cible > 90 % |
+| P3.1 | Couverture unitaire par module | Un test **qui échouerait sans l'implémentation** par fonctionnalité de §4 (M1 → M32) ; cible > 90 % — **au fil des releases** |
 | P3.2 | Intégration container Samba | `AD_TEST=1` + `integration.yml` : connexion, CRUD users, migration, reset MDP, explorateur, journal, multisite (2 containers), RBAC, départs/purge |
 | P3.3 | E2E Playwright | Contre l'app Wails : login → chaque module → simulation → exécution → audit |
 | P3.4 | Benchmarks vs Python | Import 1500 comptes, démarrage, RAM, navigation 10k objets — avant/après publiés |
 | P3.5 | Charge + sécurité | 5k utilisateurs, gros CSV, fuzz des formulaires, vérif « aucun secret en clair » |
-| P3.6 | Correctifs → beta → stable | Releases `v0.2.0-beta.x` (corrections issues alpha) puis **Porte 3** = version stable 1.0 (§12) |
+| P3.6 | Consolidation → stable | Correctifs issus des tests/retours → `v1.0.0-beta.x` → **Porte 3** = version stable 1.0 (§12) |
 
 ---
 
-## 7. Stratatégie de tests « IA-ready » — priorité 3
+## 7. Stratégie de tests « IA-ready » — priorité 3
 
-> **Déclenchée après la release alpha** (décision du 14 oct. 2026). Pendant
-> les priorités 1 et 2, seule s'applique la boucle d'hygiène : `task lint &&
-> task test` verts à chaque livraison, tests existants maintenus.
+> **Démarre avec l'alpha 1 et s'intensifie à chaque release** (stratégie du
+> 15 oct. 2026). À chaque livraison, la boucle d'hygiène reste obligatoire
+> (`task lint && task test && task test:python`) ; les chantiers ci-dessous
+> montent en puissance au fil des releases, sans bloquer la première alpha.
 
 ```
 tests/
@@ -522,7 +551,7 @@ tests/
 
 - **Script fourni** : `edusync-cli migrate --from-python --config-dir ... --vault-dir ...`
   → lit tout, valide, écrit au format Go, sauvegarde l'original en `.bak`.
-  **Livraison** : fin de la Priorité 1 (clôture §6). **Validation aller-retour
+  **Livraison** : fin de la Priorité 2 (clôture §6). **Validation aller-retour
   détaillée** (les fichiers Go relus par Python et inversement) : priorité 3.
 - Déjà acquis : les tests `internal/config`, `internal/crypto`,
   `internal/audit` lisent des fixtures produites par Python.
@@ -549,9 +578,9 @@ tests/
 
 | Cible | Méthode | Échéance |
 |---|---|---|
-| **Windows** | Runner `windows-latest` → `wails build` → **InnoSetup** (`build/inno/`) → `EduSyncAD-Setup.exe` + `.sha256` | **Alpha (P2)** |
-| **Linux (AppImage)** | Runner ubuntu + webkit2gtk → `build/appimage/` → `EduSyncAD-linux.AppImage` + `.sha256` | **Alpha (P2)** |
-| **Linux (binaire)** | `edusync-ad-linux-amd64.tar.gz` (binaire + `.desktop` + icône) | **Alpha (P2)** |
+| **Windows** | Runner `windows-latest` → `wails build` → **InnoSetup** (`build/inno/`) → `EduSyncAD-Setup.exe` + `.sha256` | **Alpha 1 (P2.1)** |
+| **Linux (AppImage)** | Runner ubuntu + webkit2gtk → `build/appimage/` → `EduSyncAD-linux.AppImage` + `.sha256` | **Alpha 1 (P2.1)** |
+| **Linux (binaire)** | `edusync-ad-linux-amd64.tar.gz` (binaire + `.desktop` + icône) | **Alpha 1 (P2.1)** |
 | **Linux (développeurs)** | `go build` direct | ✅ disponible |
 | **macOS** | `GOOS=darwin` (nécessite un runner macOS) | Hors alpha (secondaire) |
 
@@ -622,8 +651,8 @@ Ajoute le support multisite (multi-domaine/forêt).
 
 | Risque | Prob. | Impact | Mitigation |
 |---|---|---|---|
-| **Périmètre complet avant alpha** (M12-M32 = 20 modules) | Moyenne | Alpha très retardée | Livraison par **lots A/B/C** avec checklist §4 visible ; Python 1.17.1 reste en production ; chaque module suit le même pattern éprouvé (§10) |
-| **Volume du portage** (20 plugins Python) | Haute | Dilution de la qualité | Un module = une méthode (backend → UI → CLI → lint/test verts) ; prompts IA ; revue à la fin de chaque lot |
+| **Périmètre complet avant alpha** (M12-M32 = 20 modules) | Faible | Alpha très retardée | **Écarté par la stratégie v3.0** : l'alpha 1 ne couvre que le Core (M1→M11) ; les modules avancés suivent, **un par release** (§6) |
+| **Volume du portage** (20 modules avancés) | Haute | Dilution de la qualité | Un module = une release (backend → UI → i18n fr/en → lint/test verts) ; prompts IA ; Python 1.17.1 reste en production |
 | **`release.yml` Python cassé par les tags Go** | Moyenne | Perte du canal release Python | Workflows **séparés** : `release.yml` (`v1.*`) intact, `release-go.yml` (`v0.*`) ; validation sur un tag de test pré-alpha |
 | WebKitGTK Linux (Wails) | Moyenne | Build AppImage complexe | Runner ubuntu avec `libwebkit2gtk-4.1-dev`, script AppImage maison, test d'installation manuel (P2.5) |
 | Dépendance WebView2 (Windows) | Faible | App non démarable | WebView2 présent sur Win 10/11 ; l'installateur InnoSetup détecte et télécharge le redistribuable si absent |
@@ -631,35 +660,40 @@ Ajoute le support multisite (multi-domaine/forêt).
 | Kerberos/GSSAPI Linux | Moyenne | Config keytab/SPN | `gokrb5` + docs, fallback NTLM si Kerberos KO, tests des deux voies en P3 |
 | Migration config/vault | Faible | Perte de données | Script testé sur configs réelles (déjà : fixtures Python lues par Go), backup auto `.bak`, rollback documenté |
 | SQLite sans CGO (modernc) | Faible | Perf SQL | Benchmarks en priorité 3 ; fallback CGO local si nécessaire (perte de cross-compile) |
-| Taille desktop 17,2 MB | Faible | Cible 15 MB dépassée | Optimisation au chantier P2 (§9) |
+| Taille desktop 17,2 MB | Faible | Cible 15 MB dépassée | Optimisation au chantier alpha (§6 étape 2.1, §9) |
 | Courbe Go + Wails + HTMX | Moyenne | Vitesse initiale | Starter kit complet, patterns documentés, prompts IA, pair programming |
 
 ---
 
 ## 12. Critères d'acceptation — 3 portes
 
-### Porte 1 — « Logiciel fini » (fin de la Priorité 1)
+### Porte 1 — « Alpha 1 publiée » (fin de la Priorité 1 : Core M1 → M11)
 
-- [ ] **Inventaire §4 complet = ✅** vérifié dans le code : M1 → M32,
-      fondations T2, coffre, transverses — feature parity avec la Python 1.17.1.
-- [ ] Chaque écriture AD passe par `Validate → Simulate → Execute → Audit`.
-- [ ] `gofmt -l cmd internal web` vide ; `go vet ./...` vert ;
-      `go test ./...` vert ; `.venv/bin/pytest -q` vert.
-- [ ] Toutes les clés i18n ajoutées existent en français **et** en anglais.
-- [ ] `edusync-cli migrate --from-python` livré (§8).
-- [ ] Roadmap + `CLAUDE.md` reflètent le code.
-
-### Porte 2 — « Alpha publiée » (fin de la Priorité 2)
-
+- [ ] Core **M1 → M11** câblé de bout en bout (UI), vérifié manuellement
+      contre l'AD de test (`task ad:start`).
 - [ ] `release-go.yml` déclenché par un tag `v0.1.0-alpha.1` produit :
       `EduSyncAD-Setup.exe`, `EduSyncAD-linux.AppImage`,
       `edusync-ad-linux-amd64.tar.gz` + leurs `.sha256`.
-- [ ] `prerelease: true`, notes de version (périmètre §4, limites connues,
+- [ ] `prerelease: true`, notes de version (périmètre, limites connues,
       installation, appel à testeurs).
 - [ ] Checklist P2.5 passée (démarrage Windows réel, install/désinstall,
       relecture config Python, LDAPS contre l'AD de test, thème + i18n).
 - [ ] `release.yml` (Python, tags `v1.*`) **intact et vérifié**.
 - [ ] M10 (mise à jour intégrée) valide contre la release alpha.
+- [ ] `gofmt -l cmd internal web` vide ; `go vet ./...` vert ;
+      `go test ./...` vert ; `.venv/bin/pytest -q` vert ;
+      toutes les clés i18n ajoutées en français **et** en anglais.
+
+### Porte 2 — « Parité fonctionnelle » (fin de la Priorité 2 : M12 → M32)
+
+- [ ] **Inventaire §4 complet = ✅** vérifié dans le code : M1 → M32,
+      fondations T2, coffre, transverses — feature parity avec la Python 1.17.1.
+- [ ] **Chaque module livré a sa release** (tag `v0.*` → artefacts +
+      `.sha256`, §6 étape 2.2).
+- [ ] Chaque écriture AD passe par `Validate → Simulate → Execute → Audit`.
+- [ ] `edusync-cli migrate --from-python` livré (§8).
+- [ ] `gofmt`/`go vet`/`go test`/`pytest` verts ; i18n fr+en.
+- [ ] Roadmap + `CLAUDE.md` reflètent le code.
 
 ### Porte 3 — « Stable 1.0 » (fin de la Priorité 3)
 
@@ -680,32 +714,31 @@ Ajoute le support multisite (multi-domaine/forêt).
 
 ## Prochaines étapes
 
-**Priorité 1 — finir le logiciel Go :**
+**Priorité 1 — finir le Core (M1 → M11) :**
 
-1. **Lot A, A1** : câbler `BindPassword` depuis la config chiffrée + erreurs
-   de connexion dans l'UI (débloque les modules suivants).
+1. **Lot A, A1** : ✅ fait (commit `86414c0`).
 2. **Lot A, A2-A7** : finir le câblage des modules existants (handlers TODO
    + 13 gabarits manquants), module par module, `task lint && task test`
    verts à chaque fois.
 3. **Lot A, A8-A9** : créer les modules **Départs** et **Paramètres**
-   (backend + UI + CLI + i18n fr/en).
-4. **Lot A, A10-A13** : simulation généralisée, CLI Core, progression /
-   annulation, revue parity §4.1.
-5. **Lot B** puis **Lot C** : modules avancés (M12-M24 + cache T2) puis
-   v4.0 (M25-M32 + coffre).
-6. **Clôture P1** : `edusync-cli migrate --from-python`, checklist §4
-   complète → **Porte 1**.
+   (backend + UI + i18n fr/en).
+4. **Lot A, A10-A12** : simulation généralisée, CLI Core, progression /
+   annulation.
+5. **Lot A, A13** : revue parity §4.1.
 
-**Priorité 2 — alpha Windows + Linux :**
+**Priorité 2 — releases :**
 
-7. `release-go.yml` (tags `v0.*`) + `build/inno/` + `build/appimage/` ;
-   M10 auto-update ; checklist P2.5 ; tag `v0.1.0-alpha.1` → **Porte 2**.
+6. **Étape 2.1** : `release-go.yml` (tags `v0.*`) + `build/inno/` +
+   `build/appimage/` ; M10 auto-update ; checklist P2.5 ; tag
+   **`v0.1.0-alpha.1`** → **Porte 1 (Alpha 1)**.
+7. **Étape 2.2** : livrer **M12 → M32 un par un**, chaque module = **une
+   release** (`v0.2.0` → `v0.24.0`) → **Porte 2 (parité)**.
 
-**Priorité 3 — après l'alpha :**
+**Priorité 3 — campagne de tests (accompagne les releases) :**
 
-8. Campagne de tests (§7) : intégration Samba (`AD_TEST=1`), e2e
-   Playwright, couverture par module, benchmarks vs Python, charge.
-9. Correctifs → `v0.2.0-beta.x` → **Porte 3** = stable 1.0.
+8. Intégration Samba (`AD_TEST=1`), e2e Playwright, couverture par module,
+   benchmarks vs Python, charge.
+9. Consolidation → `v1.0.0-beta.x` → **Porte 3** = stable 1.0.
 
 ---
 
@@ -720,3 +753,9 @@ Ajoute le support multisite (multi-domaine/forêt).
 >   utilisateur **logiciel complet d'abord → alpha Windows + Linux →
 >   campagne de tests ensuite** ; constats de code du câblage Core intégrés
 >   au §0, périmètre alpha étendu à la migration complète (§4).
+> - 15 octobre 2026 — **A1 (M9) livré** (commit `86414c0`) : `BindPassword`
+>   câblé, repli LDAPS→LDAP + avertissement, erreurs fr/en. **v3.0 de la
+>   feuille de route** : nouvelle stratégie **Core M1→M11 d'abord → alpha 1
+>   → un module avancé = une release (M12→M32)** ; campagne de tests intégrée
+>   aux releases ; mesures §0 rafraîchies (gofmt/vet/tests Go + 843 tests
+>   Python verts).

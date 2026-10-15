@@ -100,7 +100,7 @@ _ = s.journal.Record(entree)     // jamais de Delete ni d'UPDATE
 
 - **Go** : `go test ./...` — paquets `internal/*`, `cmd/*` (pas de réseau,
   pas de container requis, chemins redirigés dans `t.TempDir()`).
-- **Python** : `.venv/bin/pytest -q` (~757 tests).
+- **Python** : `.venv/bin/pytest -q` (~843 tests).
 - **AD réel** : `task ad:start` puis `AD_TEST=1 go test ./internal/ad/...`
   (container Samba AD DC, `docs/AD_TEST_ENV.md`) — socle livré
   (`internal/testutil`, `tests/integration/`) ; la campagne complète est
@@ -110,17 +110,17 @@ _ = s.journal.Record(entree)     // jamais de Delete ni d'UPDATE
 ## État de la migration (mise à jour à chaque livraison)
 
 Voir la section « État d'avancement » (§0) de `ROADMAP_GO_MIGRATION.md`
-(version 2.0, 14 octobre 2026).
+(version 3.0, 15 octobre 2026).
 
 En résumé : **Phase 0 livrée** (config, crypto, modèles, audit, pool AD
-TLS/SASL, CLI, UI Wails/HTMX, testutil Samba). Ordre des priorités
-décidé le 14/10/2026 : **1) finir le logiciel en Go** (migration
-complète M1→M32, inventaire §4 — en cours : câblage du Core, voir le
-tableau « constat réel dans le code » du §0), **2) alpha Windows
-(Setup.exe) + Linux (AppImage)**, **3) campagne de tests**. Les tests
-dédédiés (intégration Samba, e2e, benchmarks) sont décalés après
-l'alpha ; la boucle `task lint && task test` reste obligatoire à chaque
-livraison.
+TLS/SASL, CLI, UI Wails/HTMX, testutil Samba) + **A1/M9 livré**
+(connexion : `BindPassword`, repli LDAPS→LDAP, erreurs fr/en). Stratégie
+décidée le 15/10/2026 : **1) finir le Core M1→M11** — câblage UI, les
+backends existent déjà dans `internal/ad/` (voir le tableau « constat
+réel dans le code » du §0) —, **2) sortir l'alpha 1 dès que M11 est
+prêt**, puis **un module avancé livré = une release** (M12→M32),
+**3) campagne de tests intégrée aux releases**. La boucle
+`task lint && task test` reste obligatoire à chaque livraison.
 
 ## Prompts réutilisables
 
