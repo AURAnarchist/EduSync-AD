@@ -93,6 +93,15 @@ type PageData struct {
 
 	// Password — exécution
 	ResultatPwd *PasswordExecResult
+
+	// Migration — plan
+	PlanMigration *MigrationPlanResult
+
+	// Migration — simulation
+	SimulationMigration *MigrationSimResult
+
+	// Migration — exécution
+	MigrationExecute *MigrationExecResult
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -126,7 +135,7 @@ type SimulatedUserLine struct {
 type ExecuteResult struct {
 	Crees  int
 	Echecs int
-	Lignes []ExecuteLine
+	Lignes []MigrationExecLine
 }
 
 // ExecuteLine représente une ligne du résultat d'exécution
@@ -160,7 +169,65 @@ type PasswordSimResult struct {
 type PasswordExecResult struct {
 	Crees  int
 	Echecs int
-	Lignes []ExecuteLine
+	Lignes []MigrationExecLine
+}
+
+// MigrationPlanLine représente une ligne du plan de migration
+type MigrationPlanLine struct {
+	Identifiant string
+	NomComplet  string
+	OUSource    string
+	OUCible     string
+	Action      string
+	Erreur      string
+}
+
+// MigrationPlanResult contient le plan de migration
+type MigrationPlanResult struct {
+	Lignes   []MigrationPlanLine
+	Total    int
+	WillMove int
+	WillSkip int
+}
+
+// MigrationSimLine représente une ligne de simulation migration
+type MigrationSimLine struct {
+	Identifiant string
+	NomComplet  string
+	OUSource    string
+	OUCible     string
+	Action      string
+	Erreur      string
+}
+
+// MigrationSimResult contient le résultat de la simulation migration
+type MigrationSimResult struct {
+	Lignes  []MigrationSimLine
+	Total   int
+	Valides int
+	Erreurs int
+}
+
+// MigrationExecResult contient le résultat d'exécution migration
+
+// MigrationExecLine représente une ligne de résultat exécution migration
+type MigrationExecLine struct {
+	NouveauMDP  string
+	Prenom      string
+	Nom         string
+	Identifiant string
+	NomComplet  string
+	OUSource    string
+	OUCible     string
+	Statut      string
+	Detail      string
+}
+
+// MigrationExecResult contient le résultat d'exécution migration
+type MigrationExecResult struct {
+	Crees  int
+	Echecs int
+	Lignes []MigrationExecLine
 }
 
 type session struct {
@@ -172,6 +239,7 @@ type session struct {
 	DerniereSimulation        []models.GeneratedUser
 	DerniereSimPassword       []ad.PasswordResetResult
 	DerniereSimPasswordParams ad.PasswordResetParams
+	DernierPlanMigration      *ad.MigrationPlan
 	CreeLe                    time.Time
 }
 
@@ -1111,13 +1179,13 @@ func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *sess
 	forcerMdp := r.FormValue("forcer_mdp") == "1"
 	_ = r.FormValue("skip_ad") // lu pour compatibilité future
 
-	var resultLines []ExecuteLine
+	var resultLines []MigrationExecLine
 	crees, echecs := 0, 0
 
 	for _, gu := range sessionData.DerniereSimulation {
 		if gu.Erreur != "" {
 			// Ligne en erreur, ne pas tenter de créer
-			resultLines = append(resultLines, ExecuteLine{
+			resultLines = append(resultLines, MigrationExecLine{
 				Prenom: gu.Source.Prenom, Nom: gu.Source.Nom, Identifiant: gu.Identifiant,
 				Statut: "echec", Detail: gu.Erreur,
 			})
@@ -1146,7 +1214,7 @@ func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *sess
 		// Simulation AD (vérification finale)
 		simResult, err := pool.UserCreateSimulate(r.Context(), params)
 		if err != nil || !simResult.WouldSucceed {
-			resultLines = append(resultLines, ExecuteLine{
+			resultLines = append(resultLines, MigrationExecLine{
 				Prenom: gu.Source.Prenom, Nom: gu.Source.Nom, Identifiant: gu.Identifiant,
 				Statut: "echec", Detail: simResult.Error,
 			})
@@ -1157,7 +1225,7 @@ func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *sess
 		// Exécution réelle
 		createdUser, err := pool.UserCreate(r.Context(), params)
 		if err != nil {
-			resultLines = append(resultLines, ExecuteLine{
+			resultLines = append(resultLines, MigrationExecLine{
 				Prenom: gu.Source.Prenom, Nom: gu.Source.Nom, Identifiant: gu.Identifiant,
 				Statut: "echec", Detail: err.Error(),
 			})
@@ -1179,7 +1247,7 @@ func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *sess
 			_ = s.journal.Record(entree)
 		}
 
-		resultLines = append(resultLines, ExecuteLine{
+		resultLines = append(resultLines, MigrationExecLine{
 			Prenom: gu.Source.Prenom, Nom: gu.Source.Nom, Identifiant: gu.Identifiant,
 			Statut: "succes", Detail: "Créé dans " + gu.OUCible,
 		})
@@ -1431,12 +1499,12 @@ func (s *Server) passwordExecute(w http.ResponseWriter, r *http.Request, sess *s
 		return
 	}
 
-	var resultLines []ExecuteLine
+	var resultLines []MigrationExecLine
 	crees, echecs := 0, 0
 
 	for _, res := range results {
 		if res.Error != "" {
-			resultLines = append(resultLines, ExecuteLine{
+			resultLines = append(resultLines, MigrationExecLine{
 				Identifiant: res.SAMAccountName,
 				NouveauMDP:  res.NewPassword,
 				Statut:      "echec",
@@ -1452,7 +1520,7 @@ func (s *Server) passwordExecute(w http.ResponseWriter, r *http.Request, sess *s
 				entree.Domaine = sess.Domaine
 				_ = s.journal.Record(entree)
 			}
-			resultLines = append(resultLines, ExecuteLine{
+			resultLines = append(resultLines, MigrationExecLine{
 				Identifiant: res.SAMAccountName,
 				NouveauMDP:  res.NewPassword,
 				Statut:      "succes",
@@ -1508,18 +1576,280 @@ func (s *Server) pageMigration(w http.ResponseWriter, r *http.Request, sess *ses
 }
 
 func (s *Server) migrationPlan(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: construire plan depuis CSV
-	s.rendre(w, http.StatusOK, "migration_plan.html", s.donnees(r, "Plan migration"))
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.fichier_trop_gros"))
+		return
+	}
+
+	file, _, err := r.FormFile("csv_file")
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.csv_manquant"))
+		return
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.Comma = s.detectCSVSeparator(file)
+	reader.FieldsPerRecord = -1
+	reader.LazyQuotes = true
+
+	records, err := reader.ReadAll()
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.csv_invalide"))
+		return
+	}
+
+	if len(records) < 2 {
+		s.erreur(w, Tr(s.langue(r), "erreur.csv_vide"))
+		return
+	}
+
+	// Header → indices
+	header := records[0]
+	indices := make(map[string]int)
+	for i, h := range header {
+		indices[strings.TrimSpace(strings.ToLower(h))] = i
+	}
+
+	get := func(row []string, key string) string {
+		if idx, ok := indices[key]; ok && idx < len(row) {
+			return strings.TrimSpace(row[idx])
+		}
+		return ""
+	}
+
+	type importRow struct {
+		Identifiant, OUSource, OUCible, Prenom, Nom string
+	}
+	var rows []importRow
+	for _, rec := range records[1:] {
+		rows = append(rows, importRow{
+			Identifiant: get(rec, "identifiant"),
+			OUSource:    get(rec, "ou_source"),
+			OUCible:     get(rec, "ou_cible"),
+			Prenom:      get(rec, "prenom"),
+			Nom:         get(rec, "nom"),
+		})
+	}
+
+	// Construire le plan de migration
+	var adRows []ad.MigrationRow
+	for _, row := range rows {
+		adRows = append(adRows, ad.MigrationRow{
+			SAMAccountName: row.Identifiant,
+			SourceOU:       row.OUSource,
+			TargetOU:       row.OUCible,
+		})
+	}
+
+	plan, err := pool.MigrationPlanFromCSV(r.Context(), adRows)
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	// Convertir pour le template
+	lines := make([]MigrationPlanLine, len(plan.Rows))
+	for i, row := range plan.Rows {
+		lines[i] = MigrationPlanLine{
+			Identifiant: row.SAMAccountName,
+			NomComplet:  row.DisplayName,
+			OUSource:    row.SourceOU,
+			OUCible:     row.TargetOU,
+			Action:      s.actionLabel(row, s.langue(r)),
+			Erreur:      row.Error,
+		}
+	}
+
+	// Stocker le plan en session
+	sid := s.getSessionID(r)
+	if sid != "" {
+		s.mu.Lock()
+		if sess, ok := s.sessions[sid]; ok {
+			sess.DernierPlanMigration = plan
+			s.sessions[sid] = sess
+		}
+		s.mu.Unlock()
+	}
+
+	d := s.donnees(r, Tr(s.langue(r), "migration.plan_titre"))
+	d.PlanMigration = &MigrationPlanResult{
+		Lignes:   lines,
+		Total:    plan.Total,
+		WillMove: plan.WillMove,
+		WillSkip: plan.WillSkip,
+	}
+	d.LDAPFallback = sess.LDAPFallback
+
+	s.rendre(w, http.StatusOK, "migration_plan.html", d)
 }
 
 func (s *Server) migrationSimulate(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: simulation migration
-	s.rendre(w, http.StatusOK, "migration_simulate.html", s.donnees(r, "Simulation migration"))
+	sid := s.getSessionID(r)
+	if sid == "" {
+		s.erreur(w, Tr(s.langue(r), "migration.aucune_plan"))
+		return
+	}
+
+	s.mu.Lock()
+	sessionData, ok := s.sessions[sid]
+	s.mu.Unlock()
+
+	if !ok || sessionData.DernierPlanMigration == nil {
+		s.erreur(w, Tr(s.langue(r), "migration.aucune_plan"))
+		return
+	}
+
+	plan := sessionData.DernierPlanMigration
+	_, err := pool.MigrationSimulate(r.Context(), plan)
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	// Convertir pour le template
+	lines := make([]MigrationSimLine, len(plan.Rows))
+	valides, erreurs := 0, 0
+	for i, row := range plan.Rows {
+		lines[i] = MigrationSimLine{
+			Identifiant: row.SAMAccountName,
+			NomComplet:  row.DisplayName,
+			OUSource:    row.SourceOU,
+			OUCible:     row.TargetOU,
+			Action:      s.actionLabel(row, s.langue(r)),
+			Erreur:      row.Error,
+		}
+		if row.Error != "" {
+			erreurs++
+		} else if row.SourceOU != row.TargetOU {
+			valides++
+		} else {
+			valides++ // skip aussi compté comme valide
+		}
+	}
+
+	d := s.donnees(r, Tr(s.langue(r), "migration.simulation_titre"))
+	d.SimulationMigration = &MigrationSimResult{
+		Lignes:  lines,
+		Total:   len(lines),
+		Valides: valides,
+		Erreurs: erreurs,
+	}
+	d.LDAPFallback = sess.LDAPFallback
+
+	s.rendre(w, http.StatusOK, "migration_simulate.html", d)
 }
 
 func (s *Server) migrationExecute(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: exécution migration
-	s.rendre(w, http.StatusOK, "migration_execute.html", s.donnees(r, "Exécution migration"))
+	sid := s.getSessionID(r)
+	if sid == "" {
+		s.erreur(w, Tr(s.langue(r), "migration.aucune_plan"))
+		return
+	}
+
+	s.mu.Lock()
+	sessionData, ok := s.sessions[sid]
+	s.mu.Unlock()
+
+	if !ok || sessionData.DernierPlanMigration == nil {
+		s.erreur(w, Tr(s.langue(r), "migration.aucune_plan"))
+		return
+	}
+
+	plan := sessionData.DernierPlanMigration
+	err := pool.MigrationExecute(r.Context(), plan)
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	// Groupes de classe auto (post-migration)
+	cfg, _ := config.Load(s.opts.ConfigPath)
+	if cfg.GroupesClasseAuto {
+		// Pour chaque OU cible qui a reçu des élèves, sync le groupe
+		targetOUs := make(map[string]bool)
+		for _, row := range plan.Rows {
+			if row.Error == "" && row.SourceOU != row.TargetOU {
+				targetOUs[row.TargetOU] = true
+			}
+		}
+		for ou := range targetOUs {
+			_ = pool.MigrationGroupsByOU(r.Context(), ou, "Classe")
+		}
+	}
+
+	var resultLines []MigrationExecLine
+	crees, echecs := 0, 0
+
+	for _, row := range plan.Rows {
+		if row.Error != "" {
+			resultLines = append(resultLines, MigrationExecLine{
+				Identifiant: row.SAMAccountName,
+				NomComplet:  row.DisplayName,
+				OUSource:    row.SourceOU,
+				OUCible:     row.TargetOU,
+				Statut:      "echec",
+				Detail:      row.Error,
+			})
+			echecs++
+		} else if row.SourceOU == row.TargetOU {
+			resultLines = append(resultLines, MigrationExecLine{
+				Identifiant: row.SAMAccountName,
+				NomComplet:  row.DisplayName,
+				OUSource:    row.SourceOU,
+				OUCible:     row.TargetOU,
+				Statut:      "skip",
+				Detail:      "Déjà dans l'OU cible",
+			})
+		} else {
+			// Journaliser
+			if s.journal != nil {
+				entree := nouvelleEntree("migration", row.SAMAccountName, "succes",
+					fmt.Sprintf("Déplacé de %s vers %s", row.SourceOU, row.TargetOU))
+				entree.Utilisateur = sess.Utilisateur
+				entree.Domaine = sess.Domaine
+				_ = s.journal.Record(entree)
+			}
+			resultLines = append(resultLines, MigrationExecLine{
+				Identifiant: row.SAMAccountName,
+				NomComplet:  row.DisplayName,
+				OUSource:    row.SourceOU,
+				OUCible:     row.TargetOU,
+				Statut:      "succes",
+				Detail:      "Déplacé avec succès",
+			})
+			crees++
+		}
+	}
+
+	// Nettoyer le plan
+	s.mu.Lock()
+	if sessionData, ok := s.sessions[sid]; ok {
+		sessionData.DernierPlanMigration = nil
+		s.sessions[sid] = sessionData
+	}
+	s.mu.Unlock()
+
+	d := s.donnees(r, Tr(s.langue(r), "migration.execute_titre"))
+	d.MigrationExecute = &MigrationExecResult{
+		Crees:  crees,
+		Echecs: echecs,
+		Lignes: resultLines,
+	}
+	d.LDAPFallback = sess.LDAPFallback
+
+	s.rendre(w, http.StatusOK, "migration_execute.html", d)
+}
+
+// actionLabel retourne le libellé d'action pour une ligne de migration
+func (s *Server) actionLabel(row ad.MigrationRow, langue string) string {
+	if row.Error != "" {
+		return Tr(langue, "migration.action.erreur")
+	}
+	if row.SourceOU == row.TargetOU {
+		return Tr(langue, "migration.action.skip")
+	}
+	return Tr(langue, "migration.action.move")
 }
 
 // ─── Page Explorateur ──────────────────────────────────────────────────
