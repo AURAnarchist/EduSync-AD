@@ -56,11 +56,12 @@ type Options struct {
 
 // PageData est le modèle transmis aux templates.
 type PageData struct {
-	Titre    string
-	Langue   string
-	Theme    string
-	Version  string
-	Connecte bool
+	Titre        string
+	Langue       string
+	Theme        string
+	Version      string
+	Connecte     bool
+	LDAPFallback bool // true si repli LDAP 389 effectué
 
 	// Session courante
 	Utilisateur string
@@ -79,10 +80,12 @@ type PageData struct {
 }
 
 type session struct {
-	Utilisateur string
-	Domaine     string
-	Controleur  string
-	CreeLe      time.Time
+	Utilisateur  string
+	Domaine      string
+	Controleur   string
+	MotDePasse   string // en mémoire seulement, jamais persisté
+	LDAPFallback bool   // true si repli LDAP 389 effectué
+	CreeLe       time.Time
 }
 
 // Server implémente http.Handler.
@@ -131,6 +134,7 @@ func New(opts Options) (*Server, error) {
 		journal:  journal,
 		opts:     opts,
 		sessions: map[string]*session{},
+		adPools:  map[string]*ad.Pool{},
 	}
 	s.mux = s.routes()
 	return s, nil
@@ -209,11 +213,7 @@ func (s *Server) pageLogin(w http.ResponseWriter, r *http.Request) {
 	s.rendre(w, http.StatusOK, "login.html", s.donnees(r, Tr(s.langue(r), "login.titre")))
 }
 
-// connexion ouvre une session administrateur.
-//
-// Phase 0 : la liaison LDAP n'est pas encore câblée (pool de connexions =
-// étape suivante de la roadmap) ; on valide et on journalise l'intention de
-// connexion, ce qui permet de tester toute la chaîne UI → journal.
+// connexion ouvre une session administrateur et teste la liaison AD.
 func (s *Server) connexion(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
@@ -224,6 +224,7 @@ func (s *Server) connexion(w http.ResponseWriter, r *http.Request) {
 	domaine := strings.TrimSpace(r.PostFormValue("domaine"))
 	controleur := strings.TrimSpace(r.PostFormValue("controleur"))
 	utilisateur := strings.TrimSpace(r.PostFormValue("utilisateur"))
+	motDePasse := r.PostFormValue("motdepasse") // jamais logué, jamais persisté sur disque
 
 	var erreurs []string
 	if domaine == "" {
@@ -240,14 +241,34 @@ func (s *Server) connexion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Tentative de création du pool AD (sans validation immédiate).
+	// La validation réelle aura lieu lors de l'accès aux routes protégées (requireAuth).
+	ldapFallback := false
+	pool, err := s.creerPoolADSansValidation(domaine, controleur, utilisateur, motDePasse, true)
+	if err != nil {
+		// Repli LDAP 389 + StartTLS
+		ldapFallback = true
+		pool, err = s.creerPoolADSansValidation(domaine, controleur, utilisateur, motDePasse, false)
+		if err != nil {
+			// Impossible de créer le pool même en no-validate : erreur de config
+			msg := formaterErreurConnexion(err, langue)
+			s.erreurs(w, []string{msg})
+			return
+		}
+	}
+
 	sid := nouveauJeton()
 	s.mu.Lock()
 	s.sessions[sid] = &session{
-		Utilisateur: utilisateur,
-		Domaine:     domaine,
-		Controleur:  controleur,
-		CreeLe:      time.Now(),
+		Utilisateur:  utilisateur,
+		Domaine:      domaine,
+		Controleur:   controleur,
+		MotDePasse:   motDePasse,
+		LDAPFallback: ldapFallback,
+		CreeLe:       time.Now(),
 	}
+	// Stocker le pool pour cette session (validation différée)
+	s.adPools[sid] = pool
 	s.mu.Unlock()
 
 	http.SetCookie(w, &http.Cookie{
@@ -261,16 +282,76 @@ func (s *Server) connexion(w http.ResponseWriter, r *http.Request) {
 
 	// Traçabilité : toute connexion est journalisée (append-only).
 	if s.journal != nil {
-		entree := nouvelleEntree(
-			"connexion", utilisateur, "succes",
-			fmt.Sprintf("Domaine %s, contrôleur %s", domaine, controleur),
-		)
+		detail := fmt.Sprintf("Domaine %s, contrôleur %s", domaine, controleur)
+		if ldapFallback {
+			detail += " (repli LDAP 389)"
+		}
+		entree := nouvelleEntree("connexion", utilisateur, "succes", detail)
 		entree.Utilisateur = utilisateur
 		entree.Domaine = domaine
 		_ = s.journal.Record(entree)
 	}
 
 	rediriger(w, r, "/app")
+}
+
+// creerPoolAD tente de créer un pool de connexions AD (avec validation immédiate).
+// Si useLDAPS est true, essaie sur le port 636 (LDAPS), sinon sur 389 (LDAP + StartTLS).
+func (s *Server) creerPoolAD(domaine, controleur, utilisateur, motDePasse string, useLDAPS bool) (*ad.Pool, error) {
+	port := 636
+	if !useLDAPS {
+		port = 389
+	}
+	return ad.NewPool(ad.Config{
+		Domain:        domaine,
+		Controller:    controleur,
+		Port:          port,
+		UseLDAPS:      useLDAPS,
+		AuthMethod:    ad.AuthSimple,
+		BindDN:        utilisateur,
+		BindPassword:  motDePasse,
+		TLSSkipVerify: true, // Phase 0 : certificats auto-signés (labo)
+		Timeout:       10 * time.Second,
+		MaxConns:      10,
+	})
+}
+
+// creerPoolADSansValidation crée un pool sans pré-validation de la connexion.
+// Utile pour la phase de login : on ne bloque pas l'utilisateur si l'AD est inaccessible.
+func (s *Server) creerPoolADSansValidation(domaine, controleur, utilisateur, motDePasse string, useLDAPS bool) (*ad.Pool, error) {
+	port := 636
+	if !useLDAPS {
+		port = 389
+	}
+	return ad.NewPoolNoValidate(ad.Config{
+		Domain:        domaine,
+		Controller:    controleur,
+		Port:          port,
+		UseLDAPS:      useLDAPS,
+		AuthMethod:    ad.AuthSimple,
+		BindDN:        utilisateur,
+		BindPassword:  motDePasse,
+		TLSSkipVerify: true, // Phase 0 : certificats auto-signés (labo)
+		Timeout:       10 * time.Second,
+		MaxConns:      10,
+	})
+}
+
+// formaterErreurConnexion transforme une erreur AD en message utilisateur localisé.
+func formaterErreurConnexion(err error, langue string) string {
+	msg := err.Error()
+	msgLower := strings.ToLower(msg)
+
+	switch {
+	case strings.Contains(msgLower, "certificate") || strings.Contains(msgLower, "certificat") || strings.Contains(msgLower, "tls") || strings.Contains(msgLower, "x509"):
+		return Tr(langue, "erreur.connexion_ad_certificat", msg)
+	case strings.Contains(msgLower, "invalid credentials") || strings.Contains(msgLower, "invalid dn") || strings.Contains(msgLower, "wrong password") || strings.Contains(msgLower, "account locked") || strings.Contains(msgLower, "logon failure") || strings.Contains(msgLower, "identifiant") || strings.Contains(msgLower, "verrouill"):
+		return Tr(langue, "erreur.connexion_ad_bind")
+	case strings.Contains(msgLower, "connection refused") || strings.Contains(msgLower, "timeout") || strings.Contains(msgLower, "no route") || strings.Contains(msgLower, "unreachable") || strings.Contains(msgLower, "refus") || strings.Contains(msgLower, "inaccessible") || strings.Contains(msgLower, "network"):
+		return Tr(langue, "erreur.connexion_ad_reseau")
+	default:
+		return Tr(langue, "erreur.connexion_ad") + ": " + msg
+	}
 }
 
 // tableauBord affiche la page d'accueil de l'application.
@@ -287,7 +368,14 @@ func (s *Server) tableauBord(w http.ResponseWriter, r *http.Request) {
 	d.Utilisateur = sess.Utilisateur
 	d.Domaine = sess.Domaine
 	d.Controleur = sess.Controleur
-	d.StatutAD = Tr(langue, "statut.ad")
+	d.LDAPFallback = sess.LDAPFallback
+
+	// Statut AD avec avertissement si repli LDAP
+	if sess.LDAPFallback {
+		d.StatutAD = Tr(langue, "avertissement.ldap_fallback")
+	} else {
+		d.StatutAD = Tr(langue, "statut.ad")
+	}
 
 	if s.journal != nil {
 		entries, err := s.journal.List(audit.Filter{Limit: 8})
@@ -307,6 +395,15 @@ func (s *Server) deconnexion(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(cookieSession); err == nil && c.Value != "" {
 		s.mu.Lock()
 		sess := s.sessions[c.Value]
+		// Nettoyer le pool AD associé
+		poolKey := sess.Utilisateur + "@" + sess.Domaine
+		if sess.LDAPFallback {
+			poolKey += ":ldap"
+		}
+		if pool, ok := s.adPools[poolKey]; ok {
+			_ = pool.Close()
+			delete(s.adPools, poolKey)
+		}
 		delete(s.sessions, c.Value)
 		s.mu.Unlock()
 
@@ -425,17 +522,31 @@ func (s *Server) getPool(sess *session) (*ad.Pool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if pool, ok := s.adPools[sess.Utilisateur+"@"+sess.Domaine]; ok {
+	// Clé unique incluant le fallback LDAP (port différent)
+	poolKey := sess.Utilisateur + "@" + sess.Domaine
+	if sess.LDAPFallback {
+		poolKey += ":ldap"
+	}
+
+	if pool, ok := s.adPools[poolKey]; ok {
 		return pool, nil
+	}
+
+	port := 636
+	useLDAPS := true
+	if sess.LDAPFallback {
+		port = 389
+		useLDAPS = false
 	}
 
 	pool, err := ad.NewPool(ad.Config{
 		Domain:        sess.Domaine,
 		Controller:    sess.Controleur,
-		Port:          636,
-		UseLDAPS:      true,
+		Port:          port,
+		UseLDAPS:      useLDAPS,
+		AuthMethod:    ad.AuthSimple,
 		BindDN:        sess.Utilisateur,
-		BindPassword:  "", // TODO: récupérer depuis config sécurisée
+		BindPassword:  sess.MotDePasse,
 		BaseDN:        "",
 		TLSSkipVerify: true, // Phase 0 : certificats auto-signés
 		Timeout:       10 * time.Second,
@@ -444,7 +555,7 @@ func (s *Server) getPool(sess *session) (*ad.Pool, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.adPools[sess.Utilisateur+"@"+sess.Domaine] = pool
+	s.adPools[poolKey] = pool
 	return pool, nil
 }
 

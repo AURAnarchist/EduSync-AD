@@ -115,6 +115,7 @@ func TestConnexionReussie(t *testing.T) {
 		"domaine":     {"EDUSYNC.LOCAL"},
 		"controleur":  {"dc1"},
 		"utilisateur": {"admin"},
+		"motdepasse":  {"TestPass123"},
 	}, nil)
 
 	if w.Code != http.StatusSeeOther {
@@ -146,6 +147,7 @@ func TestConnexionViaHTMX(t *testing.T) {
 		"domaine":     {"EDUSYNC.LOCAL"},
 		"controleur":  {"dc1"},
 		"utilisateur": {"admin"},
+		"motdepasse":  {"TestPass123"},
 	}, map[string]string{"HX-Request": "true"})
 
 	if w.Code != http.StatusOK {

@@ -1,5 +1,7 @@
 package ui
 
+import "fmt"
+
 // Dictionnaire de l'interface (français par défaut, anglais en secours).
 //
 // Conventions :
@@ -58,10 +60,31 @@ var messages = map[string]map[string]string{
 		"users.import_titre":  "Import CSV",
 		"users.import_desc":   "Chargez un fichier CSV pour créer des comptes en masse.",
 		"users.fichier_csv":   "Fichier CSV",
-		"users.csv_format":    "Colonnes attendues : prenom;nom;ou;classe;email (séparateur ;)",
+		"users.csv_format":    "Colonnes attendues : prenom;nom;ou;classe;email (séparateur ; ou , détecté automatiquement, UTF-8 ou Windows-1252)",
 		"users.simuler":       "Simuler l'import",
 		"users.liste_titre":   "Liste des utilisateurs",
 		"users.liste_bientot": "Disponible prochainement.",
+
+		// Arrivées — prévisualisation et exécution
+		"users.col_prenom":       "Prénom",
+		"users.col_nom":          "Nom",
+		"users.col_identifiant":  "Identifiant",
+		"users.col_mdp":          "Mot de passe",
+		"users.col_mail":         "Adresse mail",
+		"users.col_ou":           "OU cible",
+		"users.doublon":          "doublon résolu",
+		"users.resume":           "%s lignes valides · %s erreurs · %s au total",
+		"users.executer":         "Créer les comptes",
+		"users.execute_hint":     "Seules les lignes cochées seront créées dans l'AD.",
+		"users.execute_resume":   "%s comptes créés · %s échecs",
+		"users.aucune_ligne":     "Aucune ligne cochée à créer",
+		"users.opt_politique":    "Politique de mot de passe",
+		"users.opt_domaine_mail": "Domaine mail",
+		"users.opt_ou_eleves":    "OU parente des élèves",
+		"users.opt_forcer_mdp":   "Forcer le changement de MDP au premier logon",
+		"users.opt_skip_ad":      "Ignorer la vérification des doublons dans l'AD (plus rapide)",
+		"col.erreur":             "Erreur",
+		"statut.succes":          "Succès",
 
 		// Password
 		"pwd.titre":             "Réinitialisation mot de passe",
@@ -139,11 +162,18 @@ var messages = map[string]map[string]string{
 		"migration.col_detail":       "Détail",
 
 		// Erreurs communes
-		"erreur.connexion_ad":      "Impossible de se connecter à l'AD",
-		"erreur.fichier_trop_gros": "Fichier trop volumineux (max 10 Mo)",
-		"erreur.csv_manquant":      "Aucun fichier CSV fourni",
-		"erreur.csv_invalide":      "Fichier CSV illisible",
-		"erreur.csv_vide":          "Le CSV ne contient aucune donnée",
+		"erreur.connexion_ad":               "Impossible de se connecter à l'AD",
+		"erreur.connexion_ad_ldaps":         "Échec de la connexion LDAPS (port 636) : %s",
+		"erreur.connexion_ad_ldap":          "Échec de la connexion LDAP (port 389) : %s",
+		"erreur.connexion_ad_bind":          "Identifiants invalides ou compte verrouillé",
+		"erreur.connexion_ad_reseau":        "Serveur inaccessible (vérifiez l'adresse et le pare-feu)",
+		"erreur.connexion_ad_certificat":    "Certificat invalide : %s",
+		"avertissement.ldap_fallback":       "⚠️ Connexion non chiffrée (LDAP 389 + StartTLS). Le mot de passe transite en clair sur le réseau.",
+		"avertissement.ldap_fallback_titre": "Avertissement de sécurité",
+		"erreur.fichier_trop_gros":          "Fichier trop volumineux (max 10 Mo)",
+		"erreur.csv_manquant":               "Aucun fichier CSV fourni",
+		"erreur.csv_invalide":               "Fichier CSV illisible",
+		"erreur.csv_vide":                   "Le CSV ne contient aucune donnée",
 	},
 	"en": {
 		"app.nom":          "EduSync AD",
@@ -193,10 +223,31 @@ var messages = map[string]map[string]string{
 		"users.import_titre":  "CSV Import",
 		"users.import_desc":   "Upload a CSV file to create accounts in bulk.",
 		"users.fichier_csv":   "CSV File",
-		"users.csv_format":    "Expected columns: prenom;nom;ou;classe;email (separator ;)",
+		"users.csv_format":    "Expected columns: prenom;nom;ou;classe;email (separator ; or , auto-detected, UTF-8 or Windows-1252)",
 		"users.simuler":       "Simulate import",
 		"users.liste_titre":   "User list",
 		"users.liste_bientot": "Coming soon.",
+
+		// Arrivals — preview and execution
+		"users.col_prenom":       "First name",
+		"users.col_nom":          "Last name",
+		"users.col_identifiant":  "Username",
+		"users.col_mdp":          "Password",
+		"users.col_mail":         "Email",
+		"users.col_ou":           "Target OU",
+		"users.doublon":          "duplicate resolved",
+		"users.resume":           "%s valid rows · %s errors · %s total",
+		"users.executer":         "Create accounts",
+		"users.execute_hint":     "Only checked rows will be created in AD.",
+		"users.execute_resume":   "%s accounts created · %s failures",
+		"users.aucune_ligne":     "No checked row to create",
+		"users.opt_politique":    "Password policy",
+		"users.opt_domaine_mail": "Mail domain",
+		"users.opt_ou_eleves":    "Students parent OU",
+		"users.opt_forcer_mdp":   "Force password change at first logon",
+		"users.opt_skip_ad":      "Skip AD duplicate check (faster)",
+		"col.erreur":             "Error",
+		"statut.succes":          "Success",
 
 		// Password
 		"pwd.titre":             "Password reset",
@@ -274,26 +325,43 @@ var messages = map[string]map[string]string{
 		"pwd.politique_personnel": "Staff (12 chars, complex)",
 
 		// Common errors
-		"erreur.connexion_ad":      "Unable to connect to AD",
-		"erreur.fichier_trop_gros": "File too large (max 10 MB)",
-		"erreur.csv_manquant":      "No CSV file provided",
-		"erreur.csv_invalide":      "Invalid CSV file",
-		"erreur.csv_vide":          "CSV contains no data",
+		"erreur.connexion_ad":               "Unable to connect to AD",
+		"erreur.connexion_ad_ldaps":         "LDAPS connection failed (port 636): %s",
+		"erreur.connexion_ad_ldap":          "LDAP connection failed (port 389): %s",
+		"erreur.connexion_ad_bind":          "Invalid credentials or account locked",
+		"erreur.connexion_ad_reseau":        "Server unreachable (check address and firewall)",
+		"erreur.connexion_ad_certificat":    "Certificate invalid: %s",
+		"avertissement.ldap_fallback":       "⚠️ Unencrypted connection (LDAP 389 + StartTLS). Password transits in clear text.",
+		"avertissement.ldap_fallback_titre": "Security Warning",
+		"erreur.fichier_trop_gros":          "File too large (max 10 MB)",
+		"erreur.csv_manquant":               "No CSV file provided",
+		"erreur.csv_invalide":               "Invalid CSV file",
+		"erreur.csv_vide":                   "CSV contains no data",
 	},
 }
 
 // Tr retourne la traduction d'une clé pour la langue demandée.
-// Repli : langue demandée → français → clé.
-func Tr(langue, cle string) string {
+// Repli : langue demandée → français → clé. Des arguments optionnels
+// sont interpolés via fmt.Sprintf si la valeur de la clé contient %s/%d.
+func Tr(langue, cle string, args ...any) string {
+	var texte string
 	if dico, ok := messages[langue]; ok {
-		if texte, ok := dico[cle]; ok {
-			return texte
+		if t, ok := dico[cle]; ok {
+			texte = t
 		}
 	}
-	if dico, ok := messages["fr"]; ok {
-		if texte, ok := dico[cle]; ok {
-			return texte
+	if texte == "" {
+		if dico, ok := messages["fr"]; ok {
+			if t, ok := dico[cle]; ok {
+				texte = t
+			}
 		}
 	}
-	return cle
+	if texte == "" {
+		return cle
+	}
+	if len(args) > 0 {
+		return fmt.Sprintf(texte, args...)
+	}
+	return texte
 }
