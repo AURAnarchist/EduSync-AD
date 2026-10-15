@@ -102,6 +102,13 @@ type PageData struct {
 
 	// Migration — exécution
 	MigrationExecute *MigrationExecResult
+
+	// Explorer
+	SearchResult  *ad.SearchResult
+	ExplorerTree  *ad.ExplorerNode
+	ExplorerNodes []*ad.ExplorerNode
+	ExplorerUser  *ad.User
+	ExplorerGroup *ad.Group
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -1868,14 +1875,84 @@ func (s *Server) explorerSearch(w http.ResponseWriter, r *http.Request, sess *se
 		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
 		return
 	}
-	query := r.PostFormValue("q")
-	// TODO: pool.Search
-	s.rendre(w, http.StatusOK, "explorer_results.html", s.donnees(r, "Résultats: "+query))
+
+	langue := s.langue(r)
+
+	filter := ad.SearchFilter{
+		Query:           r.PostFormValue("q"),
+		ObjectTypes:     r.Form["object_types"],
+		BaseDN:          r.FormValue("base_dn"),
+		PageSize:        100,
+		IncludeDisabled: r.FormValue("include_disabled") == "1",
+	}
+
+	result, err := pool.Search(r.Context(), filter)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	d := s.donnees(r, Tr(langue, "explorer.results_title"))
+	d.SearchResult = result
+	d.LDAPFallback = sess.LDAPFallback
+	s.rendre(w, http.StatusOK, "explorer_results.html", d)
 }
 
 func (s *Server) explorerTree(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: pool.BuildTree / GetSubTree
-	s.rendre(w, http.StatusOK, "explorer_tree.html", s.donnees(r, "Arborescence"))
+	langue := s.langue(r)
+	parentDN := r.FormValue("parent_dn")
+	includeGroups := r.FormValue("include_groups") == "1"
+
+	if parentDN == "" {
+		tree, err := pool.BuildTree(r.Context(), pool.BaseDN(), 3, includeGroups)
+		if err != nil {
+			s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+			return
+		}
+		d := s.donnees(r, Tr(langue, "explorer.tree_title"))
+		d.ExplorerTree = tree
+		d.LDAPFallback = sess.LDAPFallback
+		s.rendre(w, http.StatusOK, "explorer_tree.html", d)
+		return
+	}
+
+	nodes, err := pool.GetSubTree(r.Context(), parentDN, true)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	d := s.donnees(r, "")
+	d.ExplorerNodes = nodes
+	d.LDAPFallback = sess.LDAPFallback
+	s.rendre(w, http.StatusOK, "explorer_tree.html", d)
+}
+
+func (s *Server) explorerDetails(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	dn := r.FormValue("dn")
+	if dn == "" {
+		s.erreur(w, Tr(s.langue(r), "explorer.erreur_dn_manquant"))
+		return
+	}
+
+	user, err := pool.UserGet(r.Context(), dn)
+	if err != nil {
+		group, err2 := pool.GroupGet(r.Context(), dn)
+		if err2 != nil {
+			s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+			return
+		}
+		d := s.donnees(r, Tr(s.langue(r), "explorer.details_title"))
+		d.ExplorerGroup = group
+		d.LDAPFallback = sess.LDAPFallback
+		s.rendre(w, http.StatusOK, "explorer_details.html", d)
+		return
+	}
+
+	d := s.donnees(r, Tr(s.langue(r), "explorer.details_title"))
+	d.ExplorerUser = user
+	d.LDAPFallback = sess.LDAPFallback
+	s.rendre(w, http.StatusOK, "explorer_details.html", d)
 }
 
 // ─── Page Export ───────────────────────────────────────────────────────

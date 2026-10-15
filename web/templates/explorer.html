@@ -1,0 +1,186 @@
+{{define "content"}}
+<div class="space-y-6" x-data="explorerApp()">
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "explorer.titre"}}</h1>
+    <span class="text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "explorer.sous_titre"}}</span>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-12">
+    <!-- Arborescence (gauche) -->
+    <div class="lg:col-span-4 space-y-4">
+      <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold">{{tr .Langue "explorer.arbre"}}</h2>
+          <button @click="refreshTree()" class="text-sm text-indigo-600 hover:text-indigo-500">
+            {{tr .Langue "explorer.refresh"}}
+          </button>
+        </div>
+        <div id="explorer-tree" x-show="!loadingTree" x-cloak>
+          <div x-ref="treeContainer" class="max-h-[60vh] overflow-y-auto">
+            {{template "explorer_tree" .}}
+          </div>
+        </div>
+        <div x-show="loadingTree" class="flex justify-center py-8">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+          <span class="sr-only">{{tr .Langue "explorer.loading"}}</span>
+        </div>
+      </div>
+
+      <!-- Filtres de recherche -->
+      <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h3 class="font-medium mb-3">{{tr .Langue "explorer.search"}}</h3>
+        <form hx-post="/app/explorer/search" hx-target="#explorer-results" hx-swap="innerHTML" class="space-y-3">
+          <input type="hidden" name="q" x-model="searchQuery" class="hidden">
+          
+          <div>
+            <label class="block text-sm font-medium mb-1">{{tr .Langue "explorer.query_placeholder"}}</label>
+            <input type="text" name="q" id="search-query"
+                   placeholder="{{tr .Langue "explorer.query_placeholder"}}"
+                   x-model="searchQuery"
+                   class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                   @keydown.enter.prevent="debouncedSearch()">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium mb-1">{{tr .Langue "explorer.object_types"}}</label>
+            <div class="flex flex-wrap gap-2">
+              <label class="inline-flex items-center gap-1">
+                <input type="checkbox" name="object_types" value="user" checked class="rounded border-slate-300">
+                <span class="text-sm">{{tr .Langue "explorer.type_user"}}</span>
+              </label>
+              <label class="inline-flex items-center gap-1">
+                <input type="checkbox" name="object_types" value="group" checked class="rounded border-slate-300">
+                <span class="text-sm">{{tr .Langue "explorer.type_group"}}</span>
+              </label>
+              <label class="inline-flex items-center gap-1">
+                <input type="checkbox" name="object_types" value="ou" checked class="rounded border-slate-300">
+                <span class="text-sm">{{tr .Langue "explorer.type_ou"}}</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <input type="checkbox" name="include_disabled" value="1" id="inc-disabled" class="rounded border-slate-300">
+            <label for="inc-disabled" class="text-sm">{{tr .Langue "explorer.include_disabled"}}</label>
+          </div>
+
+          <div class="flex gap-2">
+            <button type="button" @click="debouncedSearch()"
+                    class="flex-1 rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+              {{tr .Langue "explorer.search"}}
+            </button>
+            <button type="button" @click="clearSearch()"
+                    class="rounded-md bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200">
+              {{tr .Langue "explorer.clear"}}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Résultats (droite) -->
+    <div class="lg:col-span-8">
+      <div class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900" id="explorer-results">
+        {{if .SearchResult}}
+          {{template "explorer_results" .}}
+        {{else}}
+          <div class="p-8 text-center text-slate-500">
+            <p>{{tr .Langue "explorer.no_results"}}</p>
+            <p class="text-sm mt-1">{{tr .Langue "explorer.start_search"}}</p>
+          </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal détails -->
+  <div x-show="showDetails" x-cloak class="fixed inset-0 z-50 overflow-y-auto" @click.outside="closeDetails()">
+    <div class="flex min-h-full items-center justify-center p-4">
+      <div class="fixed inset-0 bg-black/50" @click="closeDetails()"></div>
+      <div class="relative w-full max-w-2xl bg-white rounded-xl shadow-xl dark:bg-slate-900" x-cloak>
+        <div id="explorer-details-content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function explorerApp() {
+  return {
+    loadingTree: false,
+    showDetails: false,
+    searchQuery: '',
+    searchDebounce: null,
+
+    init() {
+      this.loadTree();
+    },
+
+    loadTree() {
+      this.loadingTree = true;
+      fetch('/app/explorer/tree', {
+        method: 'GET',
+        headers: { 'HX-Request': 'true' }
+      })
+      .then(r => r.text())
+      .then(html => {
+        this.$refs.treeContainer.innerHTML = html;
+        this.loadingTree = false;
+      })
+      .catch(() => { this.loadingTree = false; });
+    },
+
+    refreshTree() {
+      this.loadTree();
+    },
+
+    debouncedSearch() {
+      clearTimeout(this.searchDebounce);
+      this.searchDebounce = setTimeout(() => {
+        const formData = new FormData();
+        formData.append('q', this.$refs.queryInput?.value || '');
+        document.querySelectorAll('input[name="object_types"]:checked').forEach(cb => {
+          formData.append('object_types', cb.value);
+        });
+        const incDisabled = document.getElementById('inc-disabled')?.checked;
+        if (incDisabled) formData.append('include_disabled', '1');
+
+        fetch('/app/explorer/search', { method: 'POST', body: formData, headers: { 'HX-Request': 'true' } })
+          .then(r => r.text())
+          .then(html => {
+            document.getElementById('explorer-results').innerHTML = html;
+          });
+      }, 300);
+    },
+
+    clearSearch() {
+      this.searchQuery = '';
+      this.$refs.queryInput.value = '';
+      document.getElementById('explorer-results').innerHTML = `
+        <div class="p-8 text-center text-slate-500">
+          <p>{{tr .Langue "explorer.no_results"}}</p>
+          <p class="text-sm mt-1">{{tr .Langue "explorer.start_search"}}</p>
+        </div>`;
+    },
+
+    showDetailsFn(dn) {
+      this.showDetails = true;
+      fetch('/app/explorer/details', {
+        method: 'POST',
+        body: new URLSearchParams({ dn }),
+        headers: { 'HX-Request': 'true', 'Content-Type': 'application/x-www-form-urlencoded' }
+      })
+      .then(r => r.text())
+      .then(html => {
+        document.getElementById('explorer-details-content').innerHTML = html;
+      });
+    },
+
+    closeDetails() {
+      this.showDetails = false;
+      setTimeout(() => { document.getElementById('explorer-details-content').innerHTML = ''; }, 200);
+    }
+  };
+}
+</script>
+{{end}}

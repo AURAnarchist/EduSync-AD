@@ -1,0 +1,84 @@
+{{define "explorer_tree"}}
+<ul class="explorer-tree" role="tree" x-data="treeApp()">
+  {{if .ExplorerTree}}
+    {{template "explorer_tree_node" .ExplorerTree}}
+  {{else if .ExplorerNodes}}
+    {{range .ExplorerNodes}}
+      {{template "explorer_tree_node" .}}
+    {{end}}
+  {{else}}
+    <li class="text-slate-500 text-sm py-2">{{tr .Langue "explorer.no_results"}}</li>
+  {{end}}
+</ul>
+{{end}}
+
+{{define "explorer_tree_node"}}
+<li class="pl-4" role="treeitem" aria-expanded="{{.Expanded}}">
+  <div class="flex items-center gap-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded cursor-pointer"
+       @click.stop="toggle($event)"
+       :class="{ 'bg-slate-100 dark:bg-slate-800': selected === dn }"
+       @click="select(dn)"
+       @contextmenu.prevent="openContextMenu($event, node)">
+    <button type="button"
+            x-show="hasChildren"
+            @click.stop="toggle($event)"
+            class="p-1 text-slate-500 hover:text-slate-700 dark:text-slate-400 hover:text-slate-200"
+            :class="{ 'rotate-90': expanded }"
+            aria-label="{{tr .Langue (expanded ? "explorer.collapse" : "explorer.expand")}}">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+    </button>
+
+    <span class="flex items-center gap-2 flex-1 min-w-0 truncate"
+          :class="{ 'text-slate-600 dark:text-slate-300': type === 'ou', 'text-indigo-600 dark:text-indigo-400': type === 'group' }">
+      <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" x-show="type === 'ou'"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm10 9H6V4h12v9z" clip-rule="evenodd"/></svg>
+      <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" x-show="type === 'group'"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+      <span class="truncate font-medium text-sm">{{.Name}}</span>
+      <span x-show="type === 'group'" class="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{{tr .Langue "explorer.type_group"}}</span>
+    </span>
+  </div>
+
+  <ul x-show="expanded" x-cloak class="pl-4 border-l border-slate-200 dark:border-slate-700" role="group">
+    {{if .Children}}
+      {{range .Children}}
+        {{template "explorer_tree_node" .}}
+      {{end}}
+    {{else if .HasChildren}}
+      <li class="text-center text-slate-500 py-2" x-data="lazyLoadNode()">
+        <div class="flex justify-center py-4" x-show="!loaded" x-cloak>
+          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+        </div>
+        <template x-if="loaded">
+          {{range .Children}}
+            {{template "explorer_tree_node" .}}
+          {{end}}
+        </template>
+      </li>
+    {{end}}
+  </ul>
+</li>
+{{end}}
+
+<script>
+function treeApp() {
+  return {
+    selected: null,
+    init() {
+      this.$watch('selected', val => {
+        this.$dispatch('node-selected', { dn: val });
+      });
+    },
+    select(dn) {
+      this.selected = dn;
+    },
+    toggle(event, node) {
+      event.stopPropagation();
+      // For static nodes, just toggle expanded
+      if (event.target.closest('button')) {
+        const li = event.target.closest('li');
+        li.__x.$data.expanded = !li.__x.$data.expanded;
+      }
+    }
+  };
+}
+</script>
+{{end}}

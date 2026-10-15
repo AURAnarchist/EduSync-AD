@@ -1,0 +1,109 @@
+{{define "content"}}
+<div class="p-6">
+  <div class="flex items-start justify-between mb-4">
+    <div>
+      <h2 class="text-xl font-semibold">{{tr .Langue "explorer.details_title"}}</h2>
+    </div>
+    <button @click="$dispatch('close-details')" class="text-slate-500 hover:text-slate-700">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+  </div>
+
+  {{if .ExplorerUser}}
+  <div class="space-y-4">
+    <div class="flex items-center gap-4">
+      <div class="w-16 h-16 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+        <svg class="w-8 h-8 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 01-7 7h18a7 7 0 01-7 7z"/></svg>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold">{{.ExplorerUser.DisplayName}}</h3>
+        <p class="text-sm text-slate-500">{{.ExplorerUser.SAMAccountName}}</p>
+      </div>
+    </div>
+
+    <dl class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.user_details"}}</dt>
+        <dd class="font-mono text-sm">{{.ExplorerUser.SAMAccountName}}</dd>
+      </div>
+      <div>
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.ou"}}</dt>
+        <dd class="text-sm break-all">{{.ExplorerUser.OU}}</dd>
+      </div>
+      <div>
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.enabled"}}</dt>
+        <dd class="font-medium {{if .ExplorerUser.Enabled}}text-emerald-600{{else}}text-red-600{{end}}">
+          {{if .ExplorerUser.Enabled}}{{tr .Langue "explorer.enabled"}}{{else}}{{tr .Langue "explorer.disabled_label"}}{{end}}
+        </dd>
+      </div>
+      <div>
+        <dt class="text-sm text-slate-500">DN</dt>
+        <dd class="text-sm break-all font-mono text-xs">{{.ExplorerUser.DN}}</dd>
+      </div>
+      {{if .ExplorerUser.Email}}
+      <div>
+        <dt class="text-sm text-slate-500">Email</dt>
+        <dd class="text-sm">{{.ExplorerUser.Email}}</dd>
+      </div>
+      {{end}}
+      {{if .ExplorerUser.Description}}
+      <div class="sm:col-span-2">
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.description"}}</dt>
+        <dd class="text-sm">{{.ExplorerUser.Description}}</dd>
+      </div>
+      {{end}}
+    </dl>
+
+    <div class="mt-6 pt-4 border-t border-slate-200 dark:border-slate-800">
+      <h4 class="font-medium mb-3">{{tr .Langue "explorer.member_of"}}</h4>
+      {{if .ExplorerUser.MemberOf}}
+      <ul class="space-y-1">
+        {{range .ExplorerUser.MemberOf}}
+        <li class="text-sm text-slate-600 dark:text-slate-400 break-all">{{.}}</li>
+        {{end}}
+      </ul>
+      {{else}}
+      <p class="text-sm text-slate-500">{{tr .Langue "explorer.no_groups"}}</p>
+      {{end}}
+    </div>
+  </div>
+  {{else if .ExplorerGroup}}
+  <div class="space-y-4">
+    <div class="flex items-center gap-4">
+      <div class="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+        <svg class="w-8 h-8 text-slate-600 dark:text-slate-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold">{{.ExplorerGroup.DisplayName}}</h3>
+        <p class="text-sm text-slate-500">{{.ExplorerGroup.CN}}</p>
+      </div>
+    </div>
+
+    <dl class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.group_details"}}</dt>
+        <dd class="font-mono text-sm">{{.ExplorerGroup.CN}}</dd>
+      </div>
+      <div>
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.ou"}}</dt>
+        <dd class="text-sm break-all">{{.ExplorerGroup.OU}}</dd>
+      </div>
+      <div>
+        <dt class="text-sm text-slate-500">DN</dt>
+        <dd class="text-sm break-all font-mono text-xs">{{.ExplorerGroup.DN}}</dd>
+      </div>
+      {{if .ExplorerGroup.Description}}
+      <div class="sm:col-span-2">
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.description"}}</dt>
+        <dd class="text-sm">{{.ExplorerGroup.Description}}</dd>
+      </div>
+      {{end}}
+    </dl>
+  </div>
+  {{else}}
+  <div class="text-center py-8 text-slate-500">
+    <p>Aucun détail disponible</p>
+  </div>
+  {{end}}
+</div>
+{{end}}

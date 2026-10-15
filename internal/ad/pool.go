@@ -438,6 +438,11 @@ func (p *Pool) Close() error {
 	return nil
 }
 
+// BaseDN retourne le DN de base du domaine.
+func (p *Pool) BaseDN() string {
+	return p.cfg.BaseDN
+}
+
 // readFile wrapper pour tests (remplaçable).
 var readFile = func(path string) ([]byte, error) {
 	return nil, fmt.Errorf("ad: lecture fichier non implémentée: %s", path)
