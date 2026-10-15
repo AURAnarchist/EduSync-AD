@@ -9,7 +9,7 @@
 Import CSV → comptes créés. Restructuration → comptes migrés. Départ → compte archivé.
 En quelques clics, pas en PowerShell.
 
-📖 [Guide utilisateur](docs/guide_utilisateur.md) · 📥 [Télécharger la dernière version](../../releases/latest) · 🗺️ [Feuille de route Go](ROADMAP_GO_MIGRATION.md)
+📖 [Guide utilisateur](docs/guide_utilisateur.md) · 📥 [Télécharger la dernière version](../../releases/latest) · 🗺️ [Feuille de route Go](ROADMAP_GO_MIGRATION.md) · 📊 [État avancement](docs/STATUS.md)
 
 </div>
 
@@ -142,6 +142,8 @@ natif concurrent, démarrage instantané, cross-compile en une commande —
 
 📖 [Feuille de route de migration](ROADMAP_GO_MIGRATION.md) ·
 [Architecture](docs/ARCHITECTURE.md) ·
+[État d'avancement](docs/STATUS.md) ·
+[Résumé migration](docs/migration/README.md) ·
 [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) (contexte IA)
 
 ```bash
@@ -156,6 +158,29 @@ task build:all       # cross-build → dist/ (5 cibles CLI)
 
 La version Python publiée reste la version de production jusqu'à la fin de la
 migration : les deux stacks sont testées à chaque commit (`ci.yml`).
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [État d'avancement](docs/STATUS.md) | Vue rapide de l'avancement réel (modules, tests, build, prochaine action) |
+| [Architecture Go](docs/ARCHITECTURE.md) | Architecture cible, flux UI, paquets, formats partagés Python↔Go |
+| [Environnement test AD](docs/AD_TEST_ENV.md) | Samba AD DC en container (LDAPS, Kerberos, DNS, GPO, PSO) |
+| [Guide utilisateur](docs/guide_utilisateur.md) | Manuel complet v1.x (modules, connexion, dépannage) |
+| **Migration Go** | |
+| [Résumé migration](docs/migration/README.md) | 3 priorités, phases, critères acceptation, risques |
+| [Phase 0 + Core M1-M11](docs/migration/01-core.md) | Fondations + câblage bout en bout (Lot A en cours) |
+| [Modules avancés M12-M24](docs/migration/02-modules-avances.md) | Photos, profils, quotas, scripts, M365, Exchange, RDS, cache T2 (Lot B) |
+| [Modules v4.0 M25-M32](docs/migration/03-modules-v4.md) | Multisite, RBAC, portail, API, IA, conformité, sauvegarde (Lot C) |
+| [Alpha Windows/Linux](docs/migration/04-alpha.md) | Packaging InnoSetup, AppImage, auto-update, checklist |
+| [Campagne tests post-alpha](docs/migration/05-tests.md) | Intégration Samba, e2e Playwright, benchmarks, couverture |
+| **Modules (fiches détaillées)** | `docs/modules/MXX-*.md` — une fiche par module (objectif, Python ref, Go à faire, validation) |
+| **Python v1.x (référence parité)** | |
+| [Fonctionnalités](docs/python/FEATURES.md) | Périmètre complet M1-M32 + fondations T0-T2 |
+| [État réel](docs/python/STATUS.md) | Statut vérifié dans le code, dette tests identifiée |
+| [Tests manquants](docs/python/TEST_GAPS.md) | Gaps à combler en Go (M26-M32, scénarios erreur, perf) |
 
 ---
 
