@@ -11,6 +11,7 @@
 package ui
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/csv"
 	"encoding/hex"
@@ -77,15 +78,65 @@ type PageData struct {
 	NbActions     int
 	Actions       []audit.Entry
 	StatutAD      string
+
+	// Arrivées — simulation
+	Simulation *SimulationResult
+	ForcerMdp  string
+	SkipAd     string
+
+	// Arrivées — exécution
+	Resultat *ExecuteResult
+}
+
+// importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
+type importRow struct {
+	Prenom, Nom, OU, Classe, Email string
+}
+
+// SimulationResult contient le résultat complet de la simulation
+type SimulationResult struct {
+	Lignes  []SimulatedUserLine
+	Valides int
+	Erreurs int
+	Total   int
+}
+
+// SimulatedUserLine représente une ligne de simulation pour le template
+type SimulatedUserLine struct {
+	Prenom        string
+	Nom           string
+	Identifiant   string
+	Mail          string
+	MotDePasse    string
+	OUCible       string
+	Groupe        string
+	DoublonResolu bool
+	DoublonAD     bool
+	Erreur        string
+}
+
+// ExecuteResult contient le résultat de l'exécution
+type ExecuteResult struct {
+	Crees  int
+	Echecs int
+	Lignes []ExecuteLine
+}
+
+// ExecuteLine représente une ligne du résultat d'exécution
+type ExecuteLine struct {
+	Prenom, Nom, Identifiant string
+	Statut                   string // "succes" ou "echec"
+	Detail                   string
 }
 
 type session struct {
-	Utilisateur  string
-	Domaine      string
-	Controleur   string
-	MotDePasse   string // en mémoire seulement, jamais persisté
-	LDAPFallback bool   // true si repli LDAP 389 effectué
-	CreeLe       time.Time
+	Utilisateur        string
+	Domaine            string
+	Controleur         string
+	MotDePasse         string // en mémoire seulement, jamais persisté
+	LDAPFallback       bool   // true si repli LDAP 389 effectué
+	DerniereSimulation []models.GeneratedUser
+	CreeLe             time.Time
 }
 
 // Server implémente http.Handler.
@@ -741,10 +792,11 @@ func (s *Server) usersImport(w http.ResponseWriter, r *http.Request, sess *sessi
 	}
 	defer file.Close()
 
-	// Parser CSV
+	// Parser CSV (auto-détection séparateur)
 	reader := csv.NewReader(file)
-	reader.Comma = ';'
+	reader.Comma = s.detectCSVSeparator(file)
 	reader.FieldsPerRecord = -1
+	reader.LazyQuotes = true
 
 	records, err := reader.ReadAll()
 	if err != nil {
@@ -771,10 +823,7 @@ func (s *Server) usersImport(w http.ResponseWriter, r *http.Request, sess *sessi
 		return ""
 	}
 
-	// Construire les lignes
-	type importRow struct {
-		Prenom, Nom, OU, Classe, Email string
-	}
+	// Construire les lignes brutes
 	var rows []importRow
 	for _, rec := range records[1:] {
 		rows = append(rows, importRow{
@@ -786,49 +835,338 @@ func (s *Server) usersImport(w http.ResponseWriter, r *http.Request, sess *sessi
 		})
 	}
 
-	// Simulation via pool
-	var simulated []models.GeneratedUser
-	for _, row := range rows {
-		// Utiliser la logique de génération d'identifiants
-		gu := models.GeneratedUser{
-			Source: models.RawUserRow{
-				Prenom: row.Prenom, Nom: row.Nom, OU: row.OU, Classe: row.Classe, Email: row.Email,
-			},
-			Identifiant: strings.ToLower(row.Prenom[0:1]) + "." + strings.ToLower(row.Nom),
-			MotDePasse:  "TempPass123!",
-			AdresseMail: row.Email,
-			OUCible:     row.OU,
+	// Charger la config pour génération identifiants/MDP/mail
+	cfg, _ := config.Load(s.opts.ConfigPath)
+
+	// Simulation complète : génération + détection doublons + vérification AD
+	simulated := s.simulerCreationUsers(sess, pool, rows, cfg, s.langue(r))
+
+	// Stocker la simulation en session pour l'exécution ultérieure
+	sid := s.getSessionID(r)
+	if sid != "" {
+		s.mu.Lock()
+		if sess, ok := s.sessions[sid]; ok {
+			sess.DerniereSimulation = simulated
+			s.sessions[sid] = sess
 		}
-		if gu.OUCible == "" && row.Classe != "" {
-			gu.OUCible = "OU=" + row.Classe + ",OU=Eleves," + domaineToBaseDN(sess.Domaine)
-		}
-		simulated = append(simulated, gu)
+		s.mu.Unlock()
 	}
 
 	// Rendre le template de simulation
 	s.rendreSimulationUsers(w, s.langue(r), simulated)
 }
 
-// domaineToBaseDN convertit "EDUSYNC.LOCAL" → "DC=EDUSYNC,DC=LOCAL".
-func domaineToBaseDN(domaine string) string {
-	parts := strings.Split(domaine, ".")
-	var dns []string
-	for _, p := range parts {
-		dns = append(dns, "DC="+p)
+// detectCSVSeparator détecte automatiquement le séparateur (; ou ,)
+func (s *Server) detectCSVSeparator(file interface {
+	Seek(int64, int) (int64, error)
+	Read([]byte) (int, error)
+}) rune {
+	file.Seek(0, 0)
+	buf := make([]byte, 1024)
+	n, _ := file.Read(buf)
+	file.Seek(0, 0)
+	line := string(buf[:n])
+	if strings.Count(line, ";") > strings.Count(line, ",") {
+		return ';'
 	}
-	return strings.Join(dns, ",")
+	return ','
+}
+
+// simulerCreationUsers effectue la simulation complète de création d'utilisateurs
+func (s *Server) simulerCreationUsers(sess *session, pool *ad.Pool, rows []importRow, cfg config.AppConfig, langue string) []models.GeneratedUser {
+	var simulated []models.GeneratedUser
+	var usedIdents []string
+	var usedEmails []string
+
+	// Déterminer le type de compte (par défaut élève)
+	accountType := models.AccountEleve
+
+	// Charger les identifiants existants dans l'AD si pas skip_ad
+	skipAD := false // TODO: lire depuis config ou paramètre
+	var existingIdents map[string]bool
+	if !skipAD {
+		existingIdents = s.getExistingSAMAccountNames(sess, pool)
+	}
+
+	for _, row := range rows {
+		gu := models.GeneratedUser{
+			Source: models.RawUserRow{
+				Prenom: row.Prenom, Nom: row.Nom, OU: row.OU, Classe: row.Classe, Email: row.Email,
+			},
+		}
+
+		// Validation de base
+		if row.Prenom == "" || row.Nom == "" {
+			gu.Erreur = Tr(langue, "erreur.csv_invalide") + ": prénom/nom manquant"
+			simulated = append(simulated, gu)
+			continue
+		}
+
+		// Génération identifiant
+		gu.Identifiant = cfg.GenerateIdentifiant(row.Prenom, row.Nom, accountType)
+
+		// Résolution doublons CSV
+		if contains(usedIdents, gu.Identifiant) {
+			gu.Identifiant, gu.DoublonResolu = cfg.ResolveDuplicate(gu.Identifiant, usedIdents, cfg.RegleDoublons)
+		}
+		usedIdents = append(usedIdents, gu.Identifiant)
+
+		// Vérification AD existant
+		if existingIdents != nil && existingIdents[strings.ToLower(gu.Identifiant)] {
+			gu.DoublonAD = true
+			gu.Erreur = Tr(langue, "users.doublon_ad")
+		}
+
+		// Génération mot de passe
+		mdp, _ := cfg.GeneratePassword(cfg.PolitiqueMDPEleve)
+		gu.MotDePasse = mdp
+
+		// Génération mail
+		domaineMail := cfg.DomaineMail
+		if domaineMail == "" {
+			domaineMail = strings.ToLower(sess.Domaine)
+		}
+		gu.AdresseMail = cfg.GenerateEmail(row.Prenom, row.Nom, domaineMail)
+		if contains(usedEmails, gu.AdresseMail) {
+			// Résoudre doublon mail
+			base := strings.Split(gu.AdresseMail, "@")[0]
+			domain := strings.Split(gu.AdresseMail, "@")[1]
+			resolved, _ := cfg.ResolveDuplicate(base, usedEmails, cfg.RegleDoublons)
+			gu.AdresseMail = resolved + "@" + domain
+		}
+		usedEmails = append(usedEmails, gu.AdresseMail)
+
+		// OU cible
+		gu.OUCible = row.OU
+		if gu.OUCible == "" && row.Classe != "" {
+			gu.OUCible = config.BuildUserDN(config.SanitizeDNPart(row.Classe), "OU=Eleves,"+config.DomaineToBaseDN(sess.Domaine))
+		} else if gu.OUCible == "" {
+			gu.OUCible = "OU=Eleves," + config.DomaineToBaseDN(sess.Domaine)
+		}
+
+		// Groupe classe auto
+		if cfg.GroupesClasseAuto && row.Classe != "" {
+			gu.Groupe = "CN=" + config.SanitizeDNPart(row.Classe) + ",OU=Groupes," + config.DomaineToBaseDN(sess.Domaine)
+		}
+
+		simulated = append(simulated, gu)
+	}
+
+	return simulated
+}
+
+// getExistingSAMAccountNames récupère tous les sAMAccountName existants dans l'AD
+func (s *Server) getExistingSAMAccountNames(sess *session, pool *ad.Pool) map[string]bool {
+	result := make(map[string]bool)
+	// Recherche dans la base du domaine
+	baseDN := config.DomaineToBaseDN(sess.Domaine)
+	users, err := pool.UserSearch(context.Background(), baseDN, "", nil, 1000)
+	if err != nil {
+		return result
+	}
+	for _, u := range users {
+		result[strings.ToLower(u.SAMAccountName)] = true
+	}
+	return result
+}
+
+// contains vérifie si une chaîne est dans un slice
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if strings.EqualFold(s, item) {
+			return true
+		}
+	}
+	return false
+}
+
+// getSessionID extrait l'ID de session depuis la requête
+func (s *Server) getSessionID(r *http.Request) string {
+	c, err := r.Cookie(cookieSession)
+	if err != nil || c.Value == "" {
+		return ""
+	}
+	return c.Value
 }
 
 // ─── Users : simulation & exécution ────────────────────────────────────
 
 func (s *Server) usersSimulate(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: implémenter simulation complète avec pool.UserCreateSimulate
-	s.rendre(w, http.StatusOK, "users_simulate.html", s.donnees(r, "Simulation import"))
+	// Récupérer la simulation stockée en session
+	sid := s.getSessionID(r)
+	if sid == "" {
+		s.erreur(w, Tr(s.langue(r), "users.aucune_simulation"))
+		return
+	}
+
+	s.mu.Lock()
+	sessionData, ok := s.sessions[sid]
+	s.mu.Unlock()
+
+	if !ok || sessionData.DerniereSimulation == nil {
+		s.erreur(w, Tr(s.langue(r), "users.aucune_simulation"))
+		return
+	}
+
+	// Convertir pour le template
+	lines := make([]SimulatedUserLine, len(sessionData.DerniereSimulation))
+	valides, erreurs := 0, 0
+	for i, u := range sessionData.DerniereSimulation {
+		lines[i] = SimulatedUserLine{
+			Prenom:        u.Source.Prenom,
+			Nom:           u.Source.Nom,
+			Identifiant:   u.Identifiant,
+			Mail:          u.AdresseMail,
+			MotDePasse:    u.MotDePasse,
+			OUCible:       u.OUCible,
+			Groupe:        u.Groupe,
+			DoublonResolu: u.DoublonResolu,
+			DoublonAD:     u.DoublonAD,
+			Erreur:        u.Erreur,
+		}
+		if u.Erreur != "" {
+			erreurs++
+		} else {
+			valides++
+		}
+	}
+
+	d := s.donnees(r, Tr(s.langue(r), "users.simulate_titre"))
+	d.Simulation = &SimulationResult{
+		Lignes:  lines,
+		Valides: valides,
+		Erreurs: erreurs,
+		Total:   len(lines),
+	}
+	d.LDAPFallback = sess.LDAPFallback
+
+	// Parser les options du formulaire
+	if err := r.ParseForm(); err == nil {
+		d.ForcerMdp = r.FormValue("forcer_mdp")
+		d.SkipAd = r.FormValue("skip_ad")
+	}
+
+	s.rendre(w, http.StatusOK, "users_simulate.html", d)
 }
 
 func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: implémenter exécution avec pool.UserCreate
-	s.rendre(w, http.StatusOK, "users_execute.html", s.donnees(r, "Exécution import"))
+	sid := s.getSessionID(r)
+	if sid == "" {
+		s.erreur(w, Tr(s.langue(r), "users.aucune_simulation"))
+		return
+	}
+
+	// Récupérer la simulation
+	s.mu.Lock()
+	sessionData, ok := s.sessions[sid]
+	s.mu.Unlock()
+
+	if !ok || sessionData.DerniereSimulation == nil {
+		s.erreur(w, Tr(s.langue(r), "users.aucune_simulation"))
+		return
+	}
+
+	// Parser le formulaire
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	forcerMdp := r.FormValue("forcer_mdp") == "1"
+	_ = r.FormValue("skip_ad") // lu pour compatibilité future
+
+	var resultLines []ExecuteLine
+	crees, echecs := 0, 0
+
+	for _, gu := range sessionData.DerniereSimulation {
+		if gu.Erreur != "" {
+			// Ligne en erreur, ne pas tenter de créer
+			resultLines = append(resultLines, ExecuteLine{
+				Prenom: gu.Source.Prenom, Nom: gu.Source.Nom, Identifiant: gu.Identifiant,
+				Statut: "echec", Detail: gu.Erreur,
+			})
+			echecs++
+			continue
+		}
+
+		// Construire les paramètres de création
+		params := ad.UserCreateParams{
+			SAMAccountName:    gu.Identifiant,
+			UserPrincipalName: gu.Identifiant + "@" + sess.Domaine,
+			DisplayName:       gu.Source.Prenom + " " + gu.Source.Nom,
+			GivenName:         gu.Source.Prenom,
+			SN:                gu.Source.Nom,
+			InitialPassword:   gu.MotDePasse,
+			OU:                gu.OUCible,
+			Description:       "Créé via EduSync-AD",
+			Email:             gu.AdresseMail,
+			Enabled:           true,
+			Groups:            []string{},
+		}
+		if gu.Groupe != "" {
+			params.Groups = []string{gu.Groupe}
+		}
+
+		// Simulation AD (vérification finale)
+		simResult, err := pool.UserCreateSimulate(r.Context(), params)
+		if err != nil || !simResult.WouldSucceed {
+			resultLines = append(resultLines, ExecuteLine{
+				Prenom: gu.Source.Prenom, Nom: gu.Source.Nom, Identifiant: gu.Identifiant,
+				Statut: "echec", Detail: simResult.Error,
+			})
+			echecs++
+			continue
+		}
+
+		// Exécution réelle
+		createdUser, err := pool.UserCreate(r.Context(), params)
+		if err != nil {
+			resultLines = append(resultLines, ExecuteLine{
+				Prenom: gu.Source.Prenom, Nom: gu.Source.Nom, Identifiant: gu.Identifiant,
+				Statut: "echec", Detail: err.Error(),
+			})
+			echecs++
+			continue
+		}
+
+		// Forcer changement MDP si demandé
+		if forcerMdp {
+			_ = pool.UserResetPassword(r.Context(), createdUser.DN, gu.MotDePasse)
+		}
+
+		// Journaliser
+		if s.journal != nil {
+			entree := nouvelleEntree("creation_utilisateur", gu.Identifiant, "succes",
+				fmt.Sprintf("Prénom: %s, Nom: %s, OU: %s", gu.Source.Prenom, gu.Source.Nom, gu.OUCible))
+			entree.Utilisateur = sess.Utilisateur
+			entree.Domaine = sess.Domaine
+			_ = s.journal.Record(entree)
+		}
+
+		resultLines = append(resultLines, ExecuteLine{
+			Prenom: gu.Source.Prenom, Nom: gu.Source.Nom, Identifiant: gu.Identifiant,
+			Statut: "succes", Detail: "Créé dans " + gu.OUCible,
+		})
+		crees++
+	}
+
+	// Nettoyer la simulation
+	s.mu.Lock()
+	if sessionData, ok := s.sessions[sid]; ok {
+		sessionData.DerniereSimulation = nil
+		s.sessions[sid] = sessionData
+	}
+	s.mu.Unlock()
+
+	d := s.donnees(r, Tr(s.langue(r), "users.execute_titre"))
+	d.Resultat = &ExecuteResult{
+		Crees:  crees,
+		Echecs: echecs,
+		Lignes: resultLines,
+	}
+	d.LDAPFallback = sess.LDAPFallback
+
+	s.rendre(w, http.StatusOK, "users_execute.html", d)
 }
 
 // ─── Page Mot de passe ─────────────────────────────────────────────────

@@ -1,0 +1,120 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "users.simulate_titre"}}</h1>
+    <a href="/app/users" class="text-sm text-indigo-600 hover:text-indigo-500">{{tr .Langue "users.import_retour"}}</a>
+  </div>
+
+  <p class="text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "users.simulate_desc"}}</p>
+
+  {{if .Simulation}}
+  <div class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="border-b border-slate-200 px-6 py-4 dark:border-slate-800">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-semibold">{{tr .Langue "users.simulation_preview"}}</h2>
+        <div class="text-sm text-slate-500">
+          {{tr .Langue "users.resume" .Simulation.Valides .Simulation.Erreurs .Simulation.Total}}
+        </div>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-slate-50 dark:bg-slate-800">
+          <tr>
+            <th class="px-4 py-2 text-left w-8">
+              <input type="checkbox" id="select-all" class="rounded border-slate-300" hx-post="/app/users/simulate/toggle-all" hx-target="#simulation-table-body">
+            </th>
+            <th class="px-4 py-2 text-left">{{tr .Langue "users.col_prenom"}}</th>
+            <th class="px-4 py-2 text-left">{{tr .Langue "users.col_nom"}}</th>
+            <th class="px-4 py-2 text-left">{{tr .Langue "users.col_identifiant"}}</th>
+            <th class="px-4 py-2 text-left">{{tr .Langue "users.col_mail"}}</th>
+            <th class="px-4 py-2 text-left">{{tr .Langue "users.col_mdp"}}</th>
+            <th class="px-4 py-2 text-left">{{tr .Langue "users.col_ou"}}</th>
+            <th class="px-4 py-2 text-left">{{tr .Langue "users.col_groupe"}}</th>
+            <th class="px-4 py-2 text-left">{{tr .Langue "col.erreur"}}</th>
+          </tr>
+        </thead>
+        <tbody id="simulation-table-body">
+          {{range $idx, $u := .Simulation.Lignes}}
+          <tr class="{{if $u.Erreur}}bg-red-50 dark:bg-red-900/20{{end}}">
+            <td class="px-4 py-2">
+              {{if not $u.Erreur}}
+              <input type="checkbox" name="lignes" value="{{$idx}}" checked
+                     class="rounded border-slate-300"
+                     hx-post="/app/users/simulate/toggle" hx-vals='{"idx": "{{$idx}}"}'
+                     hx-target="#execute-form">
+              {{else}}
+              <span class="text-slate-400">—</span>
+              {{end}}
+            </td>
+            <td class="px-4 py-2">{{$u.Prenom}}</td>
+            <td class="px-4 py-2">{{$u.Nom}}</td>
+            <td class="px-4 py-2">
+              <input type="hidden" name="lignes[{{$idx}}].prenom" value="{{$u.Prenom}}">
+              <input type="hidden" name="lignes[{{$idx}}].nom" value="{{$u.Nom}}">
+              <input type="text" name="lignes[{{$idx}}].identifiant" value="{{$u.Identifiant}}"
+                     class="w-full rounded border border-slate-300 px-2 py-1 text-sm font-mono dark:border-slate-700"
+                     {{if $u.Erreur}}disabled{{end}}>
+              {{if $u.DoublonResolu}}<span class="text-xs text-amber-600">{{tr .Langue "users.doublon"}}</span>{{end}}
+            </td>
+            <td class="px-4 py-2">
+              <input type="text" name="lignes[{{$idx}}].mail" value="{{$u.Mail}}"
+                     class="w-full rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700"
+                     {{if $u.Erreur}}disabled{{end}}>
+            </td>
+            <td class="px-4 py-2">
+              <input type="text" name="lignes[{{$idx}}].mdp" value="{{$u.MotDePasse}}"
+                     class="w-full rounded border border-slate-300 px-2 py-1 text-sm font-mono dark:border-slate-700"
+                     {{if $u.Erreur}}disabled{{end}}>
+            </td>
+            <td class="px-4 py-2">
+              <input type="text" name="lignes[{{$idx}}].ou" value="{{$u.OUCible}}"
+                     class="w-full rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700"
+                     {{if $u.Erreur}}disabled{{end}}>
+            </td>
+            <td class="px-4 py-2">
+              <input type="text" name="lignes[{{$idx}}].groupe" value="{{$u.Groupe}}"
+                     class="w-full rounded border border-slate-300 px-2 py-1 text-sm dark:border-slate-700"
+                     {{if $u.Erreur}}disabled{{end}}>
+            </td>
+            <td class="px-4 py-2 text-red-600">{{$u.Erreur}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="p-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
+      <div class="flex items-center gap-4 text-sm">
+        <label class="flex items-center gap-2">
+          <input type="checkbox" id="force-mdp" name="forcer_mdp" value="1"
+                 class="rounded border-slate-300">
+          {{tr .Langue "users.opt_forcer_mdp"}}
+        </label>
+        <label class="flex items-center gap-2">
+          <input type="checkbox" id="skip-ad" name="skip_ad" value="1"
+                 class="rounded border-slate-300">
+          {{tr .Langue "users.opt_skip_ad"}}
+        </label>
+      </div>
+
+      <form id="execute-form" method="post" action="/app/users/execute"
+            hx-post="/app/users/execute" hx-target="#execute-result" hx-swap="innerHTML">
+        <input type="hidden" name="forcer_mdp" value="{{if eq .ForcerMdp "on"}}1{{else}}0{{end}}">
+        <input type="hidden" name="skip_ad" value="{{if eq .SkipAd "on"}}1{{else}}0{{end}}">
+        <button type="submit"
+                class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500">
+          {{tr .Langue "users.executer"}}
+        </button>
+      </form>
+    </div>
+  </div>
+  {{else}}
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 text-center">
+    <p class="text-slate-500">{{tr .Langue "users.aucune_simulation"}}</p>
+    <a href="/app/users" class="mt-4 inline-block text-indigo-600 hover:text-indigo-500">{{tr .Langue "users.import_retour"}}</a>
+  </div>
+  {{end}}
+</div>
+{{end}}
