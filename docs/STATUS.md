@@ -19,15 +19,15 @@
 
 | Module | Fonctionnalité | État Go | Manque principal |
 |--------|---------------|---------|------------------|
-| **M1** | Création de comptes / Arrivées | 🔨 Import réel | `usersSimulate` / `usersExecute` + 2 gabarits |
+| **M1** | Création de comptes / Arrivées | ✅ **Fini** (commit `f705d80`) | — (simulation, exécution, doublons, groupes auto, export étiquettes) |
 | **M2** | Migration / Restructuration | 🔨 Page + routes | `migrationPlan` / `migrationSimulate` / `migrationExecute` + 3 gabarits |
 | **M3** | Gestion des départs | ⬜ **Absent** | Backend `depart.go`, routes, gabarit, CLI, i18n |
-| **M4** | Réinitialisation MDP | 🔨 Gabarit + routes | `passwordSimulate` / `passwordExecute` + 2 gabarits |
+| **M4** | Réinitialisation MDP | ✅ **Fini** (commit `7eacd2b`) | — (3 modes OU/groupe/CSV, politiques élèves/perso, forçage MDP, export CSV) |
 | **M5** | Explorateur AD | 🔨 Routes + i18n | Handlers `Search`/`BuildTree` + 3 gabarits |
 | **M6** | Export CSV/PDF | 🔨 Routes + i18n | Handlers réels (stubs actuels) + gabarit |
 | **M7** | Journal d'actions | 🔨 Liste 50 entrées | Filtres `auditFilter` + 2 gabarits |
 | **M8** | Paramètres globaux | ⬜ **Absent** | 4 onglets, routes, gabarit, i18n |
-| **M9** | Connexion LDAPS/LDAP | 🔨 Pool livré | `BindPassword` depuis config chiffrée, erreurs UI |
+| **M9** | Connexion LDAPS/LDAP | ✅ **Fini** (commit `86414c0`) | — (BindPassword, repli LDAP, avertissement, erreurs UI) |
 | **M10** | Mise à jour intégrée | ⬜ Absent | Livré avec alpha (P2) |
 | **M11** | Mode simulation | 🔨 Pattern prêt | Câblage généralisé sur tous modules |
 

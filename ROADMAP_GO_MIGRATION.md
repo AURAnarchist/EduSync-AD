@@ -65,8 +65,8 @@
 |---|---|---|
 | Login / dashboard / thème / i18n | ✅ Fonctionnel et testé | — |
 | Connexion AD (M9) | ✅ **Livré et testé** (commit `86414c0`) | — (`BindPassword` câblé, repli LDAPS→LDAP + avertissement, erreurs fr/en, pool nettoyé à la déconnexion) |
-| Création de comptes (M1) | 🔨 Page + import réel (`usersImport`) | `usersSimulate` / `usersExecute` = TODO ; gabarits `users_simulate.html`, `users_execute.html` absents |
-| Réinitialisation MDP (M4) | 🔨 Gabarit `password.html` + routes | `passwordSimulate` / `passwordExecute` = TODO ; 2 gabarits absents |
+| Création de comptes (M1) | ✅ **Livré et testé** (commit `f705d80`) | — (`usersSimulate`/`usersExecute` + gabarits, doublons, AD check, groupes auto, export étiquettes) |
+| Réinitialisation MDP (M4) | ✅ **Livré et testé** (commit `7eacd2b`) | — (`passwordSimulate`/`passwordExecute` + gabarits, 3 modes OU/groupe/CSV, politiques élèves/perso, forçage MDP, export CSV) |
 | Migration / restructuration (M2) | 🔨 Gabarit `migration.html` + routes | `migrationPlan` / `migrationSimulate` / `migrationExecute` = TODO ; 3 gabarits absents |
 | Explorateur AD (M5) | 🔨 Routes + i18n | Handlers `pool.Search` / `pool.BuildTree` = TODO ; 3 gabarits absents (`explorer.html`, `explorer_results.html`, `explorer_tree.html`) |
 | Export CSV/PDF (M6) | 🔨 Routes + i18n | Handlers = **stubs** (CSV/PDF factices) ; gabarit `export.html` absent |
@@ -716,15 +716,17 @@ Ajoute le support multisite (multi-domaine/forêt).
 
 **Priorité 1 — finir le Core (M1 → M11) :**
 
-1. **Lot A, A1** : ✅ fait (commit `86414c0`).
-2. **Lot A, A2-A7** : finir le câblage des modules existants (handlers TODO
-   + 13 gabarits manquants), module par module, `task lint && task test`
-   verts à chaque fois.
-3. **Lot A, A8-A9** : créer les modules **Départs** et **Paramètres**
-   (backend + UI + i18n fr/en).
-4. **Lot A, A10-A12** : simulation généralisée, CLI Core, progression /
-   annulation.
-5. **Lot A, A13** : revue parity §4.1.
+1. **Lot A, A1** : ✅ fait (commit `86414c0`) — Connexion AD (M9).
+2. **Lot A, A2** : ✅ fait (commit `f705d80`) — Création comptes (M1).
+3. **Lot A, A3** : ✅ fait (commit `7eacd2b`) — Réinitialisation MDP (M4).
+4. **Lot A, A4** : **En cours** — Migration / restructuration (M2) : `migrationPlan`/`Simulate`/`Execute` + 3 gabarits.
+5. **Lot A, A5** : Explorateur AD (M5) : handlers `Search`/`BuildTree` + 3 gabarits.
+6. **Lot A, A6** : Export CSV/PDF (M6) : vrais handlers + gabarit.
+7. **Lot A, A7** : Journal (M7) : filtres `auditFilter` + 2 gabarits.
+8. **Lot A, A8** : **Départs (M3)** : créer `internal/ad/depart.go` + UI + CLI + i18n.
+9. **Lot A, A9** : **Paramètres (M8)** : page 4 onglets + UI + i18n.
+10. **Lot A, A10-A12** : simulation généralisée, CLI Core, progression/annulation.
+11. **Lot A, A13** : revue parity §4.1.
 
 **Priorité 2 — releases :**
 

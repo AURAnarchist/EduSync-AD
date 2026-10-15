@@ -9,7 +9,7 @@
 
 | Priorité | Objectif | État |
 |----------|----------|------|
-| **1. Finir le logiciel en Go** | Migration complète : Core v1.x (M1-M11) + Modules avancés (M12-M24) + Modules v4.0 (M25-M32) | 🔨 En cours (Lot A) |
+| **1. Finir le logiciel en Go** | Migration complète : Core v1.x (M1-M11) + Modules avancés (M12-M24) + Modules v4.0 (M25-M32) | 🔨 En cours (Lot A: A1-A3 ✅, A4 en cours) |
 | **2. Sortir l'alpha** | Windows `EduSyncAD-Setup.exe` + Linux `AppImage` + `.tar.gz` | ⬜ Après P1 |
 | **3. Campagne de tests** | Intégration Samba, e2e Playwright, benchmarks vs Python, couverture > 90% | ⬜ Après alpha |
 
@@ -36,18 +36,18 @@
 
 ### Lot A — Core v1.x (M1-M11) — *En cours*
 
-| # | Module | Travail principal |
-|---|--------|-------------------|
-| A1 | Connexion AD (M9) | `BindPassword` depuis config chiffrée, erreurs UI, avertissement repli LDAP |
-| A2 | Création comptes (M1) | `usersSimulate`/`Execute` + 2 gabarits, doublons, export étiquettes |
-| A3 | Réinit MDP (M4) | `passwordSimulate`/`Execute` + 2 gabarits, politiques élèves/personnels |
-| A4 | Migration (M2) | `migrationPlan`/`Simulate`/`Execute` + 3 gabarits, groupes auto |
-| A5 | Explorateur (M5) | 3 gabarits, `pool.Search`/`BuildTree` |
-| A6 | Export (M6) | Gabarit `export.html`, vrais handlers CSV/PDF, sélection OU ± sous-OU |
-| A7 | Journal (M7) | 2 gabarits, filtres `auditFilter`, export CSV |
-| A8 | **Départs (M3)** | Créer `internal/ad/depart.go` + routes + gabarit + CLI + i18n |
-| A9 | **Paramètres (M8)** | Créer page 4 onglets + routes + gabarit + i18n |
-| A10 | Simulation (M11) | Généraliser `Validate→Simulate→Execute→Audit` sur A2-A8 |
+| # | Module | Travail principal | État |
+|---|--------|-------------------|------|
+| A1 | Connexion AD (M9) | `BindPassword` depuis config chiffrée, erreurs UI, avertissement repli LDAP | ✅ **Fini** (`86414c0`) |
+| A2 | Création comptes (M1) | `usersSimulate`/`Execute` + 2 gabarits, doublons, export étiquettes | ✅ **Fini** (`f705d80`) |
+| A3 | Réinit MDP (M4) | `passwordSimulate`/`Execute` + 2 gabarits, politiques élèves/personnels | ✅ **Fini** (`7eacd2b`) |
+| A4 | Migration (M2) | `migrationPlan`/`Simulate`/`Execute` + 3 gabarits, groupes auto | 🔨 **En cours** |
+| A5 | Explorateur (M5) | 3 gabarits, `pool.Search`/`BuildTree` | ⬜ |
+| A6 | Export (M6) | Gabarit `export.html`, vrais handlers CSV/PDF, sélection OU ± sous-OU | ⬜ |
+| A7 | Journal (M7) | 2 gabarits, filtres `auditFilter`, export CSV | ⬜ |
+| A8 | **Départs (M3)** | Créer `internal/ad/depart.go` + routes + gabarit + CLI + i18n | ⬜ |
+| A9 | **Paramètres (M8)** | Créer page 4 onglets + routes + gabarit + i18n | ⬜ |
+| A10 | Simulation (M11) | Généraliser `Validate→Simulate→Execute→Audit` sur A2-A8 | ⬜ |
 | A11 | CLI Core | Commandes JSON pour chaque module |
 | A12 | Progression/Annulation | Barre progression + `context.Context` annulable (équivalent T0) |
 | A13 | Revue parity Core | Checklist §4.1 = ✅ vérifiée dans le code, i18n fr+en |
