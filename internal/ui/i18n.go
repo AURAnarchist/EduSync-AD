@@ -147,6 +147,25 @@ var messages = map[string]map[string]string{
 		"pwd.politique_eleve":     "Élèves (8 chars, 1 chiffre)",
 		"pwd.politique_personnel": "Personnel (12 chars, complexe)",
 
+		// Password — simulation & exécution
+		"pwd.simulate_titre":     "Simulation réinitialisation MDP",
+		"pwd.simulate_desc":      "Vérifiez les nouveaux mots de passe. Modifiez si nécessaire, puis confirmez.",
+		"pwd.simulation_preview": "Prévisualisation",
+		"pwd.resume":             "%s valides · %s erreurs · %s au total",
+		"pwd.execute_titre":      "Exécution réinitialisation MDP",
+		"pwd.execute_desc":       "Résultat de la réinitialisation des mots de passe dans l'Active Directory.",
+		"pwd.execute_resume":     "%s réinitialisés · %s échecs",
+		"pwd.import_retour":      "← Retour",
+		"pwd.aucune_simulation":  "Aucune simulation en cours.",
+		"pwd.col_prenom":         "Prénom",
+		"pwd.col_nom":            "Nom",
+		"pwd.col_identifiant":    "Identifiant",
+		"pwd.col_mail":           "Adresse mail",
+		"pwd.col_nouveau_mdp":    "Nouveau MDP",
+		"pwd.col_ou":             "OU",
+		"pwd.export_csv":         "Exporter CSV",
+		"pwd.export_etiquettes":  "Exporter étiquettes",
+
 		// Migration
 		"migration.titre":            "Migration / Restructuration",
 		"migration.sous_titre":       "Déplacer les comptes entre OU (fin d'année, changement de classe).",
@@ -183,6 +202,9 @@ var messages = map[string]map[string]string{
 		"erreur.csv_manquant":               "Aucun fichier CSV fourni",
 		"erreur.csv_invalide":               "Fichier CSV illisible",
 		"erreur.csv_vide":                   "Le CSV ne contient aucune donnée",
+		"erreur.pwd_ou_vide":                "L'OU cible est obligatoire",
+		"erreur.pwd_groupe_vide":            "Le groupe cible est obligatoire",
+		"erreur.pwd_mode_invalide":          "Mode de réinitialisation invalide",
 	},
 	"en": {
 		"app.nom":          "EduSync AD",
@@ -342,6 +364,25 @@ var messages = map[string]map[string]string{
 		"pwd.politique_eleve":     "Students (8 chars, 1 digit)",
 		"pwd.politique_personnel": "Staff (12 chars, complex)",
 
+		// Password — simulation & execution
+		"pwd.simulate_titre":     "Password reset simulation",
+		"pwd.simulate_desc":      "Review new passwords. Modify if needed, then confirm.",
+		"pwd.simulation_preview": "Preview",
+		"pwd.resume":             "%s valid · %s errors · %s total",
+		"pwd.execute_titre":      "Password reset execution",
+		"pwd.execute_desc":       "Result of password reset in Active Directory.",
+		"pwd.execute_resume":     "%s reset · %s failures",
+		"pwd.import_retour":      "← Back",
+		"pwd.aucune_simulation":  "No simulation in progress.",
+		"pwd.col_prenom":         "First name",
+		"pwd.col_nom":            "Last name",
+		"pwd.col_identifiant":    "Username",
+		"pwd.col_mail":           "Email",
+		"pwd.col_nouveau_mdp":    "New password",
+		"pwd.col_ou":             "OU",
+		"pwd.export_csv":         "Export CSV",
+		"pwd.export_etiquettes":  "Export labels",
+
 		// Common errors
 		"erreur.connexion_ad":               "Unable to connect to AD",
 		"erreur.connexion_ad_ldaps":         "LDAPS connection failed (port 636): %s",
@@ -355,6 +396,9 @@ var messages = map[string]map[string]string{
 		"erreur.csv_manquant":               "No CSV file provided",
 		"erreur.csv_invalide":               "Invalid CSV file",
 		"erreur.csv_vide":                   "CSV contains no data",
+		"erreur.pwd_ou_vide":                "Target OU is required",
+		"erreur.pwd_groupe_vide":            "Target group is required",
+		"erreur.pwd_mode_invalide":          "Invalid reset mode",
 	},
 }
 

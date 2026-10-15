@@ -86,6 +86,13 @@ type PageData struct {
 
 	// Arrivées — exécution
 	Resultat *ExecuteResult
+
+	// Password — simulation
+	SimulationPwd *PasswordSimResult
+	ForceChange   bool
+
+	// Password — exécution
+	ResultatPwd *PasswordExecResult
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -125,18 +132,47 @@ type ExecuteResult struct {
 // ExecuteLine représente une ligne du résultat d'exécution
 type ExecuteLine struct {
 	Prenom, Nom, Identifiant string
+	NouveauMDP               string
 	Statut                   string // "succes" ou "echec"
 	Detail                   string
 }
 
+// PasswordSimLine représente une ligne de simulation MDP
+type PasswordSimLine struct {
+	Prenom      string
+	Nom         string
+	Identifiant string
+	Mail        string
+	NouveauMDP  string
+	OUCible     string
+	Erreur      string
+}
+
+// PasswordSimResult contient le résultat de la simulation MDP
+type PasswordSimResult struct {
+	Lignes  []PasswordSimLine
+	Valides int
+	Erreurs int
+	Total   int
+}
+
+// PasswordExecResult contient le résultat de l'exécution MDP
+type PasswordExecResult struct {
+	Crees  int
+	Echecs int
+	Lignes []ExecuteLine
+}
+
 type session struct {
-	Utilisateur        string
-	Domaine            string
-	Controleur         string
-	MotDePasse         string // en mémoire seulement, jamais persisté
-	LDAPFallback       bool   // true si repli LDAP 389 effectué
-	DerniereSimulation []models.GeneratedUser
-	CreeLe             time.Time
+	Utilisateur               string
+	Domaine                   string
+	Controleur                string
+	MotDePasse                string // en mémoire seulement, jamais persisté
+	LDAPFallback              bool   // true si repli LDAP 389 effectué
+	DerniereSimulation        []models.GeneratedUser
+	DerniereSimPassword       []ad.PasswordResetResult
+	DerniereSimPasswordParams ad.PasswordResetParams
+	CreeLe                    time.Time
 }
 
 // Server implémente http.Handler.
@@ -1181,13 +1217,283 @@ func (s *Server) pagePassword(w http.ResponseWriter, r *http.Request, sess *sess
 }
 
 func (s *Server) passwordSimulate(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: simulation reset MDP bulk
-	s.rendre(w, http.StatusOK, "password_simulate.html", s.donnees(r, "Simulation reset MDP"))
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	mode := r.FormValue("mode")
+	ou := r.FormValue("ou")
+	groupDN := r.FormValue("group_dn")
+	policyName := r.FormValue("policy")
+	forceChange := r.FormValue("force_change") == "1"
+
+	cfg, _ := config.Load(s.opts.ConfigPath)
+
+	// Déterminer la politique
+	policy := cfg.PolitiqueMDPEleve
+	if policyName == "personnel" {
+		policy = cfg.PolitiqueMDPPersonnel
+	}
+
+	// Paramètres de réinitialisation
+	params := ad.PasswordResetParams{
+		OU:          ou,
+		GroupDN:     groupDN,
+		Policy:      s.configPolicyToADPolicy(policy),
+		ForceChange: forceChange,
+		DryRun:      true, // Simulation
+	}
+
+	var results []ad.PasswordResetResult
+	var err error
+
+	switch mode {
+	case "ou":
+		if ou == "" {
+			s.erreur(w, Tr(s.langue(r), "pwd.erreur_ou_vide"))
+			return
+		}
+		params.OU = ou
+		results, err = pool.PasswordResetBulk(r.Context(), params)
+	case "group":
+		if groupDN == "" {
+			s.erreur(w, Tr(s.langue(r), "pwd.erreur_groupe_vide"))
+			return
+		}
+		params.GroupDN = groupDN
+		results, err = pool.PasswordResetBulk(r.Context(), params)
+	case "csv":
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			s.erreur(w, Tr(s.langue(r), "erreur.fichier_trop_gros"))
+			return
+		}
+		file, _, err := r.FormFile("csv_file")
+		if err != nil {
+			s.erreur(w, Tr(s.langue(r), "erreur.csv_manquant"))
+			return
+		}
+		defer file.Close()
+
+		reader := csv.NewReader(file)
+		reader.Comma = s.detectCSVSeparator(file)
+		reader.FieldsPerRecord = -1
+		reader.LazyQuotes = true
+
+		records, err := reader.ReadAll()
+		if err != nil {
+			s.erreur(w, Tr(s.langue(r), "erreur.csv_invalide"))
+			return
+		}
+
+		if len(records) < 2 {
+			s.erreur(w, Tr(s.langue(r), "erreur.csv_vide"))
+			return
+		}
+
+		header := records[0]
+		indices := make(map[string]int)
+		for i, h := range header {
+			indices[strings.TrimSpace(strings.ToLower(h))] = i
+		}
+
+		get := func(row []string, key string) string {
+			if idx, ok := indices[key]; ok && idx < len(row) {
+				return strings.TrimSpace(row[idx])
+			}
+			return ""
+		}
+
+		var targetDNs []string
+		for _, rec := range records[1:] {
+			dn := get(rec, "identifiant")
+			if dn == "" {
+				dn = get(rec, "samaccountname")
+			}
+			if dn != "" {
+				targetDNs = append(targetDNs, dn)
+			}
+		}
+
+		if len(targetDNs) == 0 {
+			s.erreur(w, Tr(s.langue(r), "erreur.csv_vide"))
+			return
+		}
+
+		// Pour chaque DN, faire une simulation individuelle
+		results = make([]ad.PasswordResetResult, 0, len(targetDNs))
+		for _, dn := range targetDNs {
+			singleParams := params
+			singleParams.TargetDN = dn
+			singleParams.OU = ""
+			singleParams.GroupDN = ""
+			r, err := pool.PasswordResetBulk(r.Context(), singleParams)
+			if err != nil {
+				results = append(results, ad.PasswordResetResult{
+					UserDN: dn, Error: fmt.Sprintf("simulation: %v", err),
+				})
+			} else if len(r) > 0 {
+				results = append(results, r[0])
+			}
+		}
+	default:
+		s.erreur(w, Tr(s.langue(r), "pwd.erreur_mode_invalide"))
+		return
+	}
+
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	// Convertir pour le template
+	lines := make([]PasswordSimLine, len(results))
+	valides, erreurs := 0, 0
+	for i, res := range results {
+		generated := res.Generated
+		if res.NewPassword == "" && generated {
+			// Générer un MDP pour l'affichage (simulation)
+			pwd, _ := params.Policy.Generate()
+			res.NewPassword = pwd
+		}
+		lines[i] = PasswordSimLine{
+			Prenom:      res.DisplayName, // On n'a pas le prénom/nom séparés ici
+			Nom:         "",
+			Identifiant: res.SAMAccountName,
+			Mail:        "",
+			NouveauMDP:  res.NewPassword,
+			OUCible:     res.UserDN,
+			Erreur:      res.Error,
+		}
+		if res.Error != "" {
+			erreurs++
+		} else {
+			valides++
+		}
+	}
+
+	// Stocker la simulation en session
+	sid := s.getSessionID(r)
+	if sid != "" {
+		s.mu.Lock()
+		if sess, ok := s.sessions[sid]; ok {
+			sess.DerniereSimPassword = results
+			sess.DerniereSimPasswordParams = params
+			s.sessions[sid] = sess
+		}
+		s.mu.Unlock()
+	}
+
+	d := s.donnees(r, Tr(s.langue(r), "pwd.simulate_titre"))
+	d.SimulationPwd = &PasswordSimResult{
+		Lignes:  lines,
+		Valides: valides,
+		Erreurs: erreurs,
+		Total:   len(lines),
+	}
+	d.LDAPFallback = sess.LDAPFallback
+	d.ForceChange = forceChange
+
+	s.rendre(w, http.StatusOK, "password_simulate.html", d)
 }
 
 func (s *Server) passwordExecute(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: exécution reset MDP bulk
-	s.rendre(w, http.StatusOK, "password_execute.html", s.donnees(r, "Exécution reset MDP"))
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	forceChange := r.FormValue("force_change") == "1"
+
+	sid := s.getSessionID(r)
+	if sid == "" {
+		s.erreur(w, Tr(s.langue(r), "pwd.aucune_simulation"))
+		return
+	}
+
+	s.mu.Lock()
+	sessionData, ok := s.sessions[sid]
+	s.mu.Unlock()
+
+	if !ok || sessionData.DerniereSimPassword == nil {
+		s.erreur(w, Tr(s.langue(r), "pwd.aucune_simulation"))
+		return
+	}
+
+	// Rejouer avec DryRun = false
+	params := sessionData.DerniereSimPasswordParams
+	params.DryRun = false
+	params.ForceChange = forceChange
+
+	results, err := pool.PasswordResetBulk(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	var resultLines []ExecuteLine
+	crees, echecs := 0, 0
+
+	for _, res := range results {
+		if res.Error != "" {
+			resultLines = append(resultLines, ExecuteLine{
+				Identifiant: res.SAMAccountName,
+				NouveauMDP:  res.NewPassword,
+				Statut:      "echec",
+				Detail:      res.Error,
+			})
+			echecs++
+		} else {
+			// Journaliser
+			if s.journal != nil {
+				entree := nouvelleEntree("reinitialisation_mdp", res.SAMAccountName, "succes",
+					fmt.Sprintf("OU: %s, généré: %v", res.UserDN, res.Generated))
+				entree.Utilisateur = sess.Utilisateur
+				entree.Domaine = sess.Domaine
+				_ = s.journal.Record(entree)
+			}
+			resultLines = append(resultLines, ExecuteLine{
+				Identifiant: res.SAMAccountName,
+				NouveauMDP:  res.NewPassword,
+				Statut:      "succes",
+				Detail:      "Réinitialisé avec succès",
+			})
+			crees++
+		}
+	}
+
+	// Nettoyer la simulation
+	s.mu.Lock()
+	if sessionData, ok := s.sessions[sid]; ok {
+		sessionData.DerniereSimPassword = nil
+		sessionData.DerniereSimPasswordParams = ad.PasswordResetParams{}
+		s.sessions[sid] = sessionData
+	}
+	s.mu.Unlock()
+
+	d := s.donnees(r, Tr(s.langue(r), "pwd.execute_titre"))
+	d.ResultatPwd = &PasswordExecResult{
+		Crees:  crees,
+		Echecs: echecs,
+		Lignes: resultLines,
+	}
+	d.LDAPFallback = sess.LDAPFallback
+
+	s.rendre(w, http.StatusOK, "password_execute.html", d)
+}
+
+// configPolicyToADPolicy convertit models.PasswordPolicy en ad.PasswordPolicy
+func (s *Server) configPolicyToADPolicy(p models.PasswordPolicy) ad.PasswordPolicy {
+	return ad.PasswordPolicy{
+		Length:           p.Longueur,
+		RequireUppercase: p.Majuscules,
+		RequireDigits:    p.Chiffres,
+		RequireSpecial:   p.CaracteresSpeciaux,
+		ForbidUserInfo:   p.MotDePasseIdentique,
+		MaxAgeDays:       0,
+		HistorySize:      0,
+		MinAgeDays:       0,
+	}
 }
 
 // ─── Page Migration ────────────────────────────────────────────────────
