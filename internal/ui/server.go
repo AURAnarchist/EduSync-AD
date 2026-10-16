@@ -473,6 +473,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/profils/simulate", s.requireAuthSession(s.profilsSimulate))
 	mux.HandleFunc("POST /app/profils/execute", s.requireAuthSession(s.profilsExecute))
 
+	// Heures de connexion (M16)
+	mux.HandleFunc("GET /app/logon-hours", s.requireAuthSession(s.pageLogonHours))
+	mux.HandleFunc("POST /app/logon-hours/simulate", s.requireAuthSession(s.logonHoursSimulate))
+	mux.HandleFunc("POST /app/logon-hours/execute", s.requireAuthSession(s.logonHoursExecute))
+
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
 }
@@ -2880,6 +2885,166 @@ func (s *Server) profilsResultatFragment(w http.ResponseWriter, langue string, r
 	}
 	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "profils.statut"), result.Statut))
 	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "profils.detail"), result.Detaille))
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Heures de connexion (M16) ──────────────────────────────────────
+
+func (s *Server) pageLogonHours(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "logonhours.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "logon_hours.html", d)
+}
+
+func (s *Server) logonHoursSimulate(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	preset := strings.TrimSpace(r.FormValue("preset"))
+
+	var heures *ad.LogonHours
+	switch preset {
+	case "cours":
+		h := ad.HeuresCours()
+		heures = &h
+	case "admin":
+		h := ad.HeuresAdmin()
+		heures = &h
+	case "personnalise":
+		// Construire la grille depuis le formulaire
+		h := ad.LogonHours{}
+		for jour := 0; jour < 7; jour++ {
+			for heure := 0; heure < 24; heure++ {
+				cle := fmt.Sprintf("h_%d_%d", jour, heure)
+				h.Jours[jour][heure] = r.FormValue(cle) == "1"
+			}
+		}
+		heures = &h
+	case "":
+		// Pas de preset : rien à appliquer
+	default:
+		s.erreur(w, Tr(langue, "logonhours.preset_invalide"))
+		return
+	}
+
+	params := ad.LogonHoursParams{
+		UserDN: userDN,
+		Heures: heures,
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.logonHoursResultatFragment(w, langue, &ad.LogonHoursResult{
+			UserDN:   params.UserDN,
+			Statut:   "attente_ad",
+			Detaille: "connexion AD requise pour vérifier l'existence du compte",
+		})
+		return
+	}
+
+	result, err := pool.LogonHoursSimulate(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	s.logonHoursResultatFragment(w, langue, result)
+}
+
+func (s *Server) logonHoursExecute(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	preset := strings.TrimSpace(r.FormValue("preset"))
+
+	var heures *ad.LogonHours
+	switch preset {
+	case "cours":
+		h := ad.HeuresCours()
+		heures = &h
+	case "admin":
+		h := ad.HeuresAdmin()
+		heures = &h
+	case "personnalise":
+		h := ad.LogonHours{}
+		for jour := 0; jour < 7; jour++ {
+			for heure := 0; heure < 24; heure++ {
+				cle := fmt.Sprintf("h_%d_%d", jour, heure)
+				h.Jours[jour][heure] = r.FormValue(cle) == "1"
+			}
+		}
+		heures = &h
+	case "":
+	default:
+		s.erreur(w, Tr(langue, "logonhours.preset_invalide"))
+		return
+	}
+
+	params := ad.LogonHoursParams{
+		UserDN: userDN,
+		Heures: heures,
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.logonHoursResultatFragment(w, langue, &ad.LogonHoursResult{
+			UserDN:   params.UserDN,
+			Statut:   "attente_ad",
+			Detaille: "connexion AD requise pour appliquer les heures",
+		})
+		return
+	}
+
+	result, err := pool.LogonHoursExecute(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	// Journaliser
+	if s.journal != nil {
+		entree := nouvelleEntree("logon_hours", result.UserDN, result.Statut,
+			fmt.Sprintf("heures de connexion appliquées"))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+
+	s.logonHoursResultatFragment(w, langue, result)
+}
+
+// logonHoursResultatFragment rend le fragment HTML du résultat.
+func (s *Server) logonHoursResultatFragment(w http.ResponseWriter, langue string, result *ad.LogonHoursResult) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "logonhours.resultat") + `</h2>`)
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "logonhours.utilisateur"), result.UserDN))
+	if result.Heures != nil {
+		nbAutorises := 0
+		for j := 0; j < 7; j++ {
+			for hh := 0; hh < 24; hh++ {
+				if result.Heures.EstAutorise(j, hh) {
+					nbAutorises++
+				}
+			}
+		}
+		b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %d heures autorisées</p>`, Tr(langue, "logonhours.heures_autorisees"), nbAutorises))
+	}
+	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "logonhours.statut"), result.Statut))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "logonhours.detail"), result.Detaille))
 	b.WriteString(`</div>`)
 	w.Write([]byte(b.String()))
 }

@@ -265,7 +265,7 @@ edusync-ad/
 | **M13 — Profils utilisateurs** | Itinérant/local/obligatoire par OU ou groupe, variables `%USERNAME%` `%SAM%` `%OU%` | ✅ Livré et testé (B1) |
 | **M14 — Quotas de disque (FSRM)** | Quota par OU/groupe, application auto, rapport CSV | ⬜ |
 | **M15 — Scripts logon/logoff** | Éditeur bat/powershell/vbs, variables, déploiement `scriptPath`/GPO | ⬜ |
-| **M16 — Heures de connexion** | Grille 24h × 7j, préréglages, attribut `logonHours` | ⬜ |
+| **M16 — Heures de connexion** | Grille 24h × 7j, préréglages, attribut `logonHours` | ✅ Livré et testé (B2) |
 | **M17 — Dossiers personnels** | Création auto `\\srv\homes\%USERNAME%`, droits NTFS, lettre lecteur | ⬜ |
 | **M18 — Espaces partagés par classe** | Partage SMB + NTFS à la création du groupe de classe, sync membres ↔ droits | ⬜ |
 | **M19 — Microsoft 365 / Entra ID** | App registration, users cloud + licences, groupes/Teams, photos | ⬜ |
@@ -736,6 +736,7 @@ Ajoute le support multisite (multi-domaine/forêt).
 **Lot B — Premier module avancé (M13 → release v0.2.0) :**
 
 14. **Lot B, B1** : ✅ fait — M13 Profils utilisateurs : `internal/ad/profiles.go` (itinérant/local/obligatoire, variables %USERNAME%/%SAM%/%OU%), routes UI `/app/profils`, gabarit `profils.html`, CLI `profils simulate/execute`, i18n fr/en, tests unitaires.
+15. **Lot B, B2** : ✅ fait — M16 Heures de connexion : `internal/ad/logon_hours.go` (grille 7×24, attribut logonHours 21 octets, préréglages cours/admin/personnalisé), routes UI `/app/logon-hours`, gabarit `logon_hours.html`, CLI `logon-hours simulate/execute`, i18n fr/en, tests unitaires.
 
 **Priorité 2 — releases :**
 

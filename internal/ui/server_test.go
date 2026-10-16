@@ -512,3 +512,59 @@ func TestProfilsSansSession(t *testing.T) {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
 }
+
+// ─── Heures de connexion (M16) ───────────────────────────────────────────────
+
+func TestLogonHoursPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/logon-hours", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Heures de connexion") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestLogonHoursSimule(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/logon-hours/simulate", url.Values{
+		"user_dn": {"CN=Jean Dupont,OU=Users,DC=X"},
+		"preset":  {"cours"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", w.Body.String())
+	}
+}
+
+func TestLogonHoursExecute(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/logon-hours/execute", url.Values{
+		"user_dn": {"CN=Jean Dupont,OU=Users,DC=X"},
+		"preset":  {"admin"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", w.Body.String())
+	}
+}
+
+func TestLogonHoursSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/logon-hours", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
