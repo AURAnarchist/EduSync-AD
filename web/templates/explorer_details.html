@@ -74,8 +74,8 @@
         <svg class="w-8 h-8 text-slate-600 dark:text-slate-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
       </div>
       <div>
-        <h3 class="text-lg font-semibold">{{.ExplorerGroup.DisplayName}}</h3>
-        <p class="text-sm text-slate-500">{{.ExplorerGroup.CN}}</p>
+        <h3 class="text-lg font-semibold">{{.ExplorerGroup.CN}}</h3>
+        <p class="text-sm text-slate-500">{{.ExplorerGroup.SAMAccountName}}</p>
       </div>
     </div>
 
@@ -100,9 +100,52 @@
       {{end}}
     </dl>
   </div>
+  {{else if .ExplorerOU}}
+  <div class="space-y-4">
+    <div class="flex items-center gap-4">
+      <div class="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+        <svg class="w-8 h-8 text-amber-600 dark:text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/></svg>
+      </div>
+      <div>
+        <h3 class="text-lg font-semibold">{{.ExplorerOU.Name}}</h3>
+        <p class="text-sm text-slate-500">{{tr .Langue "explorer.ou_details"}}</p>
+      </div>
+    </div>
+
+    <dl class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.ou_details"}}</dt>
+        <dd class="font-mono text-sm">{{.ExplorerOU.Name}}</dd>
+      </div>
+      <div>
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.parent"}}</dt>
+        <dd class="text-sm break-all">{{.ExplorerOU.ParentDN}}</dd>
+      </div>
+      <div class="sm:col-span-2">
+        <dt class="text-sm text-slate-500">DN</dt>
+        <dd class="text-sm break-all font-mono text-xs">{{.ExplorerOU.DN}}</dd>
+      </div>
+      {{if .ExplorerOU.Description}}
+      <div class="sm:col-span-2">
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.description"}}</dt>
+        <dd class="text-sm">{{.ExplorerOU.Description}}</dd>
+      </div>
+      {{end}}
+      {{if .ExplorerOU.GPOLinks}}
+      <div class="sm:col-span-2">
+        <dt class="text-sm text-slate-500">{{tr .Langue "explorer.gpo_links"}}</dt>
+        <dd class="text-sm break-all space-y-1">
+          {{range .ExplorerOU.GPOLinks}}
+          <div class="font-mono text-xs">{{.}}</div>
+          {{end}}
+        </dd>
+      </div>
+      {{end}}
+    </dl>
+  </div>
   {{else}}
   <div class="text-center py-8 text-slate-500">
-    <p>Aucun détail disponible</p>
+    <p>{{tr .Langue "explorer.aucun_detail"}}</p>
   </div>
   {{end}}
 </div>

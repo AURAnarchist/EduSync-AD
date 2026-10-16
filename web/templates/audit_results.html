@@ -1,0 +1,34 @@
+{{define "audit_results"}}
+<table class="w-full text-sm divide-y divide-slate-100 dark:divide-slate-800">
+  <thead class="bg-slate-50 dark:bg-slate-800">
+    <tr>
+      <th class="px-4 py-2 text-left">{{tr .Langue "col.date"}}</th>
+      <th class="px-4 py-2 text-left">{{tr .Langue "col.action"}}</th>
+      <th class="px-4 py-2 text-left">{{tr .Langue "col.compte"}}</th>
+      <th class="px-4 py-2 text-left">{{tr .Langue "col.resultat"}}</th>
+      <th class="px-4 py-2 text-left">{{tr .Langue "col.operateur"}}</th>
+      <th class="px-4 py-2 text-left">{{tr .Langue "col.detail"}}</th>
+    </tr>
+  </thead>
+  <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+    {{range .Actions}}
+    <tr>
+      <td class="px-4 py-2">{{horodatage .Timestamp}}</td>
+      <td class="px-4 py-2 font-mono">{{.ActionType}}</td>
+      <td class="px-4 py-2">{{.Compte}}</td>
+      <td class="px-4 py-2">
+        <span class="rounded-full px-2 py-0.5 text-xs font-medium
+          {{if eq .Resultat "succes"}}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300{{else}}bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300{{end}}">
+          {{if eq .Resultat "succes"}}{{tr .Langue "statut.succes"}}{{else}}{{.Resultat}}{{end}}</span>
+      </td>
+      <td class="px-4 py-2">{{.Utilisateur}}</td>
+      <td class="px-4 py-2">{{.Detail}}</td>
+    </tr>
+    {{else}}
+    <tr>
+      <td class="px-4 py-8 text-center text-slate-500" colspan="6">{{tr .Langue "dash.aucune_action"}}</td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

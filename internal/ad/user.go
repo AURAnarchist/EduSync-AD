@@ -409,11 +409,16 @@ func (p *Pool) UserSearch(ctx context.Context, ou, filter string, attrs []string
 
 	var allUsers []*User
 	pageSize = max(pageSize, 100)
+	var cookie []byte // curseur de pagination entre itérations
 
 	for {
 		req := ldap.NewSearchRequest(ou, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false, filter, attrs, nil)
 		if pageSize > 0 {
-			req.Controls = []ldap.Control{ldap.NewControlPaging(uint32(pageSize))}
+			// Le cookie reprend la page là où la précédente s'est arrêtée ;
+			// sans lui, le serveur renverrait la première page en boucle.
+			ctrl := ldap.NewControlPaging(uint32(pageSize))
+			ctrl.Cookie = cookie
+			req.Controls = []ldap.Control{ctrl}
 		}
 
 		res, err := conn.Search(req)
@@ -430,14 +435,14 @@ func (p *Pool) UserSearch(ctx context.Context, ou, filter string, attrs []string
 		}
 
 		// Pagination
-		var cookie string
+		cookie = nil
 		for _, ctrl := range res.Controls {
 			if paging, ok := ctrl.(*ldap.ControlPaging); ok {
-				cookie = string(paging.Cookie)
+				cookie = paging.Cookie
 				break
 			}
 		}
-		if cookie == "" {
+		if len(cookie) == 0 {
 			break
 		}
 	}

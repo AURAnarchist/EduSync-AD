@@ -29,7 +29,7 @@
       <!-- Filtres de recherche -->
       <div class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <h3 class="font-medium mb-3">{{tr .Langue "explorer.search"}}</h3>
-        <form hx-post="/app/explorer/search" hx-target="#explorer-results" hx-swap="innerHTML" class="space-y-3">
+        <form id="form-recherche" hx-post="/app/explorer/search" hx-target="#explorer-results" hx-swap="innerHTML" class="space-y-3">
           <input type="hidden" name="q" x-model="searchQuery" class="hidden">
           
           <div>
@@ -94,7 +94,8 @@
   </div>
 
   <!-- Modal détails -->
-  <div x-show="showDetails" x-cloak class="fixed inset-0 z-50 overflow-y-auto" @click.outside="closeDetails()">
+  <div x-show="detailsOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto"
+       @click.outside="closeDetails()" @close-details.window="closeDetails()">
     <div class="flex min-h-full items-center justify-center p-4">
       <div class="fixed inset-0 bg-black/50" @click="closeDetails()"></div>
       <div class="relative w-full max-w-2xl bg-white rounded-xl shadow-xl dark:bg-slate-900" x-cloak>
@@ -107,27 +108,38 @@
 <script>
 function explorerApp() {
   return {
+    detailsOpen: false,
     loadingTree: false,
-    showDetails: false,
     searchQuery: '',
     searchDebounce: null,
 
     init() {
-      this.loadTree();
+      // L'arbre est rendu côté serveur ; on ne le re-charge que s'il est
+      // absent (échec initial) ou sur demande explicite (rafraîchir).
+      if (!this.$refs.treeContainer.querySelector('li[data-dn]')) {
+        this.loadTree();
+      }
     },
 
     loadTree() {
       this.loadingTree = true;
-      fetch('/app/explorer/tree', {
-        method: 'GET',
-        headers: { 'HX-Request': 'true' }
+      fetch('/app/explorer/tree?include_groups=1', {
+        headers: { 'HX-Request': 'true' },
+        credentials: 'same-origin',
       })
-      .then(r => r.text())
-      .then(html => {
-        this.$refs.treeContainer.innerHTML = html;
-        this.loadingTree = false;
-      })
-      .catch(() => { this.loadingTree = false; });
+        .then(function (reponse) {
+          if (!reponse.ok) throw new Error('HTTP ' + reponse.status);
+          return reponse.text();
+        })
+        .then((html) => {
+          this.$refs.treeContainer.innerHTML = html;
+          this.loadingTree = false;
+        })
+        .catch(() => {
+          this.$refs.treeContainer.innerHTML =
+            '<p class="text-sm text-red-500">{{tr .Langue "erreur.connexion_ad"}}</p>';
+          this.loadingTree = false;
+        });
     },
 
     refreshTree() {
@@ -138,16 +150,21 @@ function explorerApp() {
       clearTimeout(this.searchDebounce);
       this.searchDebounce = setTimeout(() => {
         const formData = new FormData();
-        formData.append('q', this.$refs.queryInput?.value || '');
-        document.querySelectorAll('input[name="object_types"]:checked').forEach(cb => {
+        formData.append('q', this.searchQuery || '');
+        document.querySelectorAll('input[name="object_types"]:checked').forEach((cb) => {
           formData.append('object_types', cb.value);
         });
         const incDisabled = document.getElementById('inc-disabled')?.checked;
         if (incDisabled) formData.append('include_disabled', '1');
 
-        fetch('/app/explorer/search', { method: 'POST', body: formData, headers: { 'HX-Request': 'true' } })
-          .then(r => r.text())
-          .then(html => {
+        fetch('/app/explorer/search', {
+          method: 'POST',
+          body: formData,
+          headers: { 'HX-Request': 'true' },
+          credentials: 'same-origin',
+        })
+          .then((reponse) => reponse.text())
+          .then((html) => {
             document.getElementById('explorer-results').innerHTML = html;
           });
       }, 300);
@@ -155,7 +172,8 @@ function explorerApp() {
 
     clearSearch() {
       this.searchQuery = '';
-      this.$refs.queryInput.value = '';
+      const champ = document.getElementById('search-query');
+      if (champ) champ.value = '';
       document.getElementById('explorer-results').innerHTML = `
         <div class="p-8 text-center text-slate-500">
           <p>{{tr .Langue "explorer.no_results"}}</p>
@@ -163,23 +181,26 @@ function explorerApp() {
         </div>`;
     },
 
-    showDetailsFn(dn) {
-      this.showDetails = true;
+    showDetails(dn) {
+      this.detailsOpen = true;
       fetch('/app/explorer/details', {
         method: 'POST',
         body: new URLSearchParams({ dn }),
-        headers: { 'HX-Request': 'true', 'Content-Type': 'application/x-www-form-urlencoded' }
+        headers: { 'HX-Request': 'true', 'Content-Type': 'application/x-www-form-urlencoded' },
+        credentials: 'same-origin',
       })
-      .then(r => r.text())
-      .then(html => {
-        document.getElementById('explorer-details-content').innerHTML = html;
-      });
+        .then((reponse) => reponse.text())
+        .then((html) => {
+          document.getElementById('explorer-details-content').innerHTML = html;
+        });
     },
 
     closeDetails() {
-      this.showDetails = false;
-      setTimeout(() => { document.getElementById('explorer-details-content').innerHTML = ''; }, 200);
-    }
+      this.detailsOpen = false;
+      setTimeout(() => {
+        document.getElementById('explorer-details-content').innerHTML = '';
+      }, 200);
+    },
   };
 }
 </script>

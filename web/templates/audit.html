@@ -1,0 +1,80 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "audit.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "audit.sous_titre"}}</p>
+  </div>
+
+  <!-- Filtres -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "audit.filtres"}}</h2>
+
+    <form method="post" action="/app/audit/filter"
+          hx-post="/app/audit/filter" hx-target="#audit-resultat" hx-swap="innerHTML"
+          class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div>
+        <label for="audit_date_debut" class="block text-sm font-medium">{{tr .Langue "audit.date_debut"}}</label>
+        <input id="audit_date_debut" name="date_debut" type="date"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </div>
+      <div>
+        <label for="audit_date_fin" class="block text-sm font-medium">{{tr .Langue "audit.date_fin"}}</label>
+        <input id="audit_date_fin" name="date_fin" type="date"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </div>
+      <div>
+        <label for="audit_type" class="block text-sm font-medium">{{tr .Langue "audit.type_action"}}</label>
+        <input id="audit_type" name="type_action" type="text"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </div>
+      <div class="flex items-end">
+        <button type="submit"
+                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "audit.recherche"}}
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Résultat (50 dernières entrées par défaut) -->
+  <div id="audit-resultat" class="rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900 overflow-hidden">
+    <table class="w-full text-sm divide-y divide-slate-100 dark:divide-slate-800">
+      <thead class="bg-slate-50 dark:bg-slate-800">
+        <tr>
+          <th class="px-4 py-2 text-left">{{tr .Langue "col.date"}}</th>
+          <th class="px-4 py-2 text-left">{{tr .Langue "col.action"}}</th>
+          <th class="px-4 py-2 text-left">{{tr .Langue "col.compte"}}</th>
+          <th class="px-4 py-2 text-left">{{tr .Langue "col.resultat"}}</th>
+          <th class="px-4 py-2 text-left">{{tr .Langue "col.operateur"}}</th>
+          <th class="px-4 py-2 text-left">{{tr .Langue "col.detail"}}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+        {{range .Actions}}
+        <tr>
+          <td class="px-4 py-2">{{horodatage .Timestamp}}</td>
+          <td class="px-4 py-2 font-mono">{{.ActionType}}</td>
+          <td class="px-4 py-2">{{.Compte}}</td>
+          <td class="px-4 py-2">
+            <span class="rounded-full px-2 py-0.5 text-xs font-medium
+              {{if eq .Resultat "succes"}}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300{{else}}bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300{{end}}">
+              {{if eq .Resultat "succes"}}{{tr .Langue "statut.succes"}}{{else}}{{.Resultat}}{{end}}</span>
+          </td>
+          <td class="px-4 py-2">{{.Utilisateur}}</td>
+          <td class="px-4 py-2">{{.Detail}}</td>
+        </tr>
+        {{else}}
+        <tr>
+          <td class="px-4 py-8 text-center text-slate-500" colspan="6">{{tr .Langue "dash.aucune_action"}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    {{if .Actions}}
+    <div class="px-4 py-2 text-xs text-slate-500 border-t border-slate-100 dark:border-slate-800">
+      {{len .Actions}} {{tr .Langue "dash.nb_actions"}}
+    </div>
+    {{end}}
+  </div>
+</div>
+{{end}}

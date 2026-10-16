@@ -58,6 +58,9 @@ Commandes :
   paths                   Affiche les chemins locaux (config, données, journal)
   config show             Affiche la configuration au format JSON
   audit list              Liste le journal d'actions
+  departs simulate        Simule un départ (sans écriture AD)
+  departs pending list    Liste les suppressions planifiées
+  departs pending purge   Purge les suppressions expirées
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -90,6 +93,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdConfig(args[1:], stdout, stderr)
 	case "audit":
 		return cmdAudit(args[1:], stdout, stderr)
+	case "departs":
+		return cmdDepart(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

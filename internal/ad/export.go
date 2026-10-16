@@ -222,8 +222,10 @@ func (p *Pool) ExportLabelsPDF(ctx context.Context, params ExportParams) ([]byte
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(0, 0, 0)
 	pdf.SetAutoPageBreak(false, 0)
-	pdf.AddFont("DejaVu", "", "DejaVuSansCondensed.json") // nécessite le font pack
-	pdf.SetFont("DejaVu", "", params.FontSize)
+	// Police cœur Helvetica : aucun fichier de police requis. Limitation
+	// alpha : encodage WinAnsi (le caractère « œ » hors Latin-1 est rendu en
+	// « ? ») — le font pack UTF-8 complet arrivera en Phase 3 (voir roadmap).
+	pdf.SetFont("Helvetica", "", params.FontSize)
 	pdf.SetTextColor(int(params.TextColor.R), int(params.TextColor.G), int(params.TextColor.B))
 
 	labelCount := 0
@@ -280,25 +282,25 @@ func (p *Pool) drawLabel(pdf *gofpdf.Fpdf, u *User, params *ExportParams, spec l
 
 	// Identifiant
 	if params.hasField(FieldSAMAccountName) {
-		pdf.SetFont("DejaVu", "", params.FontSize-1)
+		pdf.SetFont("Helvetica", "", params.FontSize-1)
 		pdf.Text(x+2, curY, "Identifiant: "+u.SAMAccountName)
-		pdf.SetFont("DejaVu", "", params.FontSize)
+		pdf.SetFont("Helvetica", "", params.FontSize)
 		curY += lineH
 	}
 
 	// Email
 	if params.hasField(FieldEmail) && u.Email != "" {
-		pdf.SetFont("DejaVu", "", params.FontSize-1)
+		pdf.SetFont("Helvetica", "", params.FontSize-1)
 		pdf.Text(x+2, curY, u.Email)
-		pdf.SetFont("DejaVu", "", params.FontSize)
+		pdf.SetFont("Helvetica", "", params.FontSize)
 		curY += lineH
 	}
 
 	// OU
 	if params.hasField(FieldOU) {
-		pdf.SetFont("DejaVu", "", params.FontSize-2)
+		pdf.SetFont("Helvetica", "", params.FontSize-2)
 		pdf.Text(x+2, curY, "OU: "+shortOU(u.OU))
-		pdf.SetFont("DejaVu", "", params.FontSize)
+		pdf.SetFont("Helvetica", "", params.FontSize)
 		curY += lineH
 	}
 
@@ -355,14 +357,14 @@ func (p *Pool) ExportTrombinoscope(ctx context.Context, params ExportParams) ([]
 	pdf.SetMargins(10, 10, 10)
 	pdf.SetAutoPageBreak(true, 10)
 	pdf.AddPage()
-	pdf.SetFont("DejaVu", "", 10)
+	pdf.SetFont("Helvetica", "", 10)
 
 	// Titre
 	if params.Title != "" {
-		pdf.SetFont("DejaVu", "B", 16)
+		pdf.SetFont("Helvetica", "B", 16)
 		pdf.Cell(0, 10, params.Title)
 		pdf.Ln(15)
-		pdf.SetFont("DejaVu", "", 10)
+		pdf.SetFont("Helvetica", "", 10)
 	}
 
 	// Grille : 4 colonnes × 8 lignes = 32 par page A4
@@ -403,18 +405,21 @@ func (p *Pool) ExportTrombinoscope(ctx context.Context, params ExportParams) ([]
 		pdf.Text(x+2, y+6, truncate(name, 20))
 
 		// Identifiant
-		pdf.SetFont("DejaVu", "", 7)
+		pdf.SetFont("Helvetica", "", 7)
 		pdf.Text(x+2, y+12, u.SAMAccountName)
-		pdf.SetFont("DejaVu", "", 10)
+		pdf.SetFont("Helvetica", "", 10)
 
 		// Classe/Ou
-		pdf.SetFont("DejaVu", "", 7)
+		pdf.SetFont("Helvetica", "", 7)
 		pdf.Text(x+2, y+18, shortOU(u.OU))
-		pdf.SetFont("DejaVu", "", 10)
+		pdf.SetFont("Helvetica", "", 10)
 	}
 
 	var out bytes.Buffer
-	return out.Bytes(), pdf.Output(&out)
+	if err := pdf.Output(&out); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
 }
 
 // getUserPhoto récupère la photo d'un utilisateur (jpegPhoto/thumbnailPhoto).

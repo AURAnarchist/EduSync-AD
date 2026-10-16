@@ -1,0 +1,241 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "parametres.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "parametres.sous_titre"}}</p>
+  </div>
+
+  <!-- Onglets -->
+  <div class="border-b border-slate-200 dark:border-slate-800 mb-6">
+    <nav class="flex space-x-8 px-4" aria-label="{{tr .Langue "parametres.onglets"}}">
+      <a href="#onglet-comptes"
+         class="border-b-2 border-indigo-600 text-indigo-600 px-1 py-4 text-sm font-medium dark:text-indigo-400">
+        {{tr .Langue "parametres.onglet_comptes"}}
+      </a>
+      <a href="#onglet-mots_de_passe"
+         class="border-b-2 border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-300 px-1 py-4 text-sm font-medium dark:text-slate-500 dark:hover:text-slate-300">
+        {{tr .Langue "parametres.onglet_mots_de_passe"}}
+      </a>
+      <a href="#onglet-apparence"
+         class="border-b-2 border-transparent text-slate-400 hover:text-slate-600 hover:border-slate-300 px-1 py-4 text-sm font-medium dark:text-slate-500 dark:hover:text-slate-300">
+        {{tr .Langue "parametres.onglet_apparence"}}
+      </a>
+    </nav>
+  </div>
+
+  <!-- Onglet Comptes -->
+  <section id="onglet-comptes" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold mb-4">{{tr .Langue "parametres.onglet_comptes"}}</h2>
+    <p class="mb-4 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "parametres.comptes_desc"}}</p>
+
+    <form method="post" action="/app/parametres/comptes"
+          hx-post="/app/parametres/comptes" hx-swap="none"
+          class="space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.format_eleve"}}</label>
+          <input name="format_eleve" value="prenom.nom"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <p class="mt-1 text-xs text-slate-500">{{tr .Langue "parametres.format_eleve_aide"}}</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.format_personnel"}}</label>
+          <input name="format_personnel" value="p.nom"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.regle_doublons"}}</label>
+          <select name="regle_doublons"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="suffixe_numerique">{{tr .Langue "parametres.doublon_suffixe"}}</option>
+            <option value="suffixe_numerique_separateur">{{tr .Langue "parametres.doublon_suffixe_sep"}}</option>
+            <option value="prefixe_numerique">{{tr .Langue "parametres.doublon_prefixe"}}</option>
+            <option value="lettres_prenom">{{tr .Langue "parametres.doublon_lettres_prenom"}}</option>
+            <option value="lettres_nom">{{tr .Langue "parametres.doublon_lettres_nom"}}</option>
+            <option value="annee_suffixe">{{tr .Langue "parametres.doublon_annee"}}</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.regle_prenom"}}</label>
+          <select name="regle_prenom"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="premier_prenom">{{tr .Langue "parametres.prenom_premier"}}</option>
+            <option value="concatenation">{{tr .Langue "parametres.prenom_concat"}}</option>
+            <option value="troncature">{{tr .Langue "parametres.prenom_tronc"}}</option>
+          </select>
+        </div>
+        <div class="flex items-end">
+          <label class="flex items-center gap-2 text-sm font-medium">
+            <input type="checkbox" name="groupes_auto" value="1" checked class="rounded-slate-500">
+            {{tr .Langue "parametres.groupes_auto"}}
+          </label>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.ou_parente"}}</label>
+          <input name="ou_parente" type="text" placeholder="OU=Classes,DC=EDUSYNC,DC=LOCAL"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.ou_archive"}}</label>
+          <input name="ou_archive" type="text" placeholder="OU=Archive,DC=EDUSYNC,DC=LOCAL"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.delai_suppression"}}</label>
+          <input name="delai_suppression" type="number" value="30" min="1"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <p class="mt-1 text-xs text-slate-500">{{tr .Langue "parametres.delai_aide"}}</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.domaine_mail"}}</label>
+          <input name="domaine_mail" type="text" placeholder="edusync.local"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.format_mail"}}</label>
+          <input name="format_mail" value="{P}.{N}"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+      </div>
+
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "parametres.enregistrer"}}
+      </button>
+    </form>
+  </section>
+
+  <!-- Onglet Mots de passe -->
+  <section id="onglet-mots_de_passe" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold mb-4">{{tr .Langue "parametres.onglet_mots_de_passe"}}</h2>
+    <p class="mb-4 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "parametres.mdp_desc"}}</p>
+
+    <form method="post" action="/app/parametres/mots_de_passe"
+          hx-post="/app/parametres/mots_de_passe" hx-swap="none"
+          class="space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="space-y-4">
+          <h3 class="text-base font-semibold">{{tr .Langue "parametres.politique_eleve"}}</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium">{{tr .Langue "parametres.longueur"}}</label>
+              <input name="pwd_eleve_longueur" type="number" value="8" min="4" max="64"
+                     class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" name="pwd_eleve_majuscules" value="1" class="rounded-slate-500">
+                {{tr .Langue "parametres.majuscules"}}
+              </label>
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" name="pwd_eleve_chiffres" value="1" checked class="rounded-slate-500">
+                {{tr .Langue "parametres.chiffres"}}
+              </label>
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" name="pwd_eleve_speciaux" value="1" class="rounded-slate-500">
+                {{tr .Langue "parametres.speciaux"}}
+              </label>
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" name="pwd_eleve_interdit_info" value="1" checked class="rounded-slate-500">
+                {{tr .Langue "parametres.interdit_info"}}
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-4">
+          <h3 class="text-base font-semibold">{{tr .Langue "parametres.politique_personnel"}}</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium">{{tr .Langue "parametres.longueur"}}</label>
+              <input name="pwd_personnel_longueur" type="number" value="12" min="4" max="64"
+                     class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" name="pwd_personnel_majuscules" value="1" checked class="rounded-slate-500">
+                {{tr .Langue "parametres.majuscules"}}
+              </label>
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" name="pwd_personnel_chiffres" value="1" checked class="rounded-slate-500">
+                {{tr .Langue "parametres.chiffres"}}
+              </label>
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" name="pwd_personnel_speciaux" value="1" checked class="rounded-slate-500">
+                {{tr .Langue "parametres.speciaux"}}
+              </label>
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" name="pwd_personnel_interdit_info" value="1" checked class="rounded-slate-500">
+                {{tr .Langue "parametres.interdit_info"}}
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "parametres.enregistrer"}}
+      </button>
+    </form>
+  </section>
+
+  <!-- Onglet Apparence -->
+  <section id="onglet-apparence" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold mb-4">{{tr .Langue "parametres.onglet_apparence"}}</h2>
+    <p class="mb-4 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "parametres.apparence_desc"}}</p>
+
+    <form method="post" action="/app/parametres/apparence"
+          hx-post="/app/parametres/apparence" hx-swap="none"
+          class="space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.theme"}}</label>
+          <select name="theme"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="clair">{{tr .Langue "parametres.theme_clair"}}</option>
+            <option value="sombre">{{tr .Langue "parametres.theme_sombre"}}</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "parametres.langue"}}</label>
+          <select name="langue"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="fr">{{tr .Langue "parametres.langue_fr"}}</option>
+            <option value="en">{{tr .Langue "parametres.langue_en"}}</option>
+          </select>
+        </div>
+      </div>
+
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "parametres.enregistrer"}}
+      </button>
+    </form>
+  </section>
+
+  <div class="mt-6 text-xs text-slate-400 dark:text-slate-500">
+    {{tr .Langue "parametres.note_delégation"}}
+  </div>
+</div>
+{{end}}

@@ -69,10 +69,10 @@
 | Réinitialisation MDP (M4) | ✅ **Livré et testé** (commit `7eacd2b`) | — (`passwordSimulate`/`passwordExecute` + gabarits, 3 modes OU/groupe/CSV, politiques élèves/perso, forçage MDP, export CSV) |
 | Migration / restructuration (M2) | 🔨 Gabarit `migration.html` + routes | `migrationPlan` / `migrationSimulate` / `migrationExecute` = TODO ; 3 gabarits absents |
 | Explorateur AD (M5) | 🔨 Routes + i18n | Handlers `pool.Search` / `pool.BuildTree` = TODO ; 3 gabarits absents (`explorer.html`, `explorer_results.html`, `explorer_tree.html`) |
-| Export CSV/PDF (M6) | 🔨 Routes + i18n | Handlers = **stubs** (CSV/PDF factices) ; gabarit `export.html` absent |
-| Journal d'actions (M7) | 🔨 Page avec 50 dernières entrées | Filtres (`auditFilter`) = TODO ; gabarit `audit.html` + `audit_results.html` absents |
-| Gestion des départs (M3) | ⬜ **Module absent** | Backend `internal/ad/depart.go`, route, gabarit, CLI, i18n (`models.DepartRow` existe déjà) |
-| Paramètres globaux (M8) | ⬜ **Page absente** | 4 onglets (comptes, mots de passe, apparence, délégation), routes, gabarit, i18n |
+| Export CSV/PDF (M6) | ✅ **Livré et testé** | Vrais handlers `ExportCSV` / `ExportLabelsPDF` + gabarit `export.html` |
+| Journal d'actions (M7) | ✅ **Livré et testé** | `auditFilter` réel + gabarits `audit.html` + `audit_results.html` |
+| Gestion des départs (M3) | ✅ **Livré et testé** | `internal/ad/depart.go`, routes, gabarit `departs.html`, CLI `departs`, i18n fr/en |
+| Paramètres globaux (M8) | ✅ **Livré et testé** | 3 onglets (comptes, mots de passe, apparence), routes, gabarit `parametres.html`, i18n fr/en |
 | Mode simulation (M11) | 🔨 Pattern `simulation.go` prêt | Câler `Validate → Simulate → Execute → Audit` sur tous les modules ci-dessus |
 | Mise à jour intégrée (M10) | ⬜ Absente en Go | Auto-update + vérification `.sha256` (livrée avec le chantier alpha, §6 étape 2.1) |
 
@@ -719,12 +719,12 @@ Ajoute le support multisite (multi-domaine/forêt).
 1. **Lot A, A1** : ✅ fait (commit `86414c0`) — Connexion AD (M9).
 2. **Lot A, A2** : ✅ fait (commit `f705d80`) — Création comptes (M1).
 3. **Lot A, A3** : ✅ fait (commit `7eacd2b`) — Réinitialisation MDP (M4).
-4. **Lot A, A4** : **En cours** — Migration / restructuration (M2) : `migrationPlan`/`Simulate`/`Execute` + 3 gabarits.
-5. **Lot A, A5** : Explorateur AD (M5) : handlers `Search`/`BuildTree` + 3 gabarits.
-6. **Lot A, A6** : Export CSV/PDF (M6) : vrais handlers + gabarit.
-7. **Lot A, A7** : Journal (M7) : filtres `auditFilter` + 2 gabarits.
-8. **Lot A, A8** : **Départs (M3)** : créer `internal/ad/depart.go` + UI + CLI + i18n.
-9. **Lot A, A9** : **Paramètres (M8)** : page 4 onglets + UI + i18n.
+4. **Lot A, A4** : ✅ fait (commit `a369b82`) — Migration / restructuration (M2).
+5. **Lot A, A5** : ✅ fait (commit `4f96344`) — Explorateur AD (M5).
+6. **Lot A, A6** : ✅ fait — Export CSV/PDF (M6) : vrais handlers `ExportCSV`/`ExportLabelsPDF` + gabarit `export.html`.
+7. **Lot A, A7** : ✅ fait — Journal (M7) : `auditFilter` réel + gabarits `audit.html`/`audit_results.html`.
+8. **Lot A, A8** : ✅ fait — Départs (M3) : `internal/ad/depart.go` + routes + gabarit `departs.html` + CLI `departs` + i18n fr/en.
+9. **Lot A, A9** : ✅ fait — Paramètres (M8) : 3 onglets (comptes, mots de passe, apparence) + routes + gabarit `parametres.html` + i18n fr/en.
 10. **Lot A, A10-A12** : simulation généralisée, CLI Core, progression/annulation.
 11. **Lot A, A13** : revue parity §4.1.
 

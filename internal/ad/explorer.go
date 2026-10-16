@@ -275,12 +275,14 @@ func (p *Pool) Search(ctx context.Context, filter SearchFilter) (*SearchResult, 
 	for {
 		req := ldap.NewSearchRequest(baseDN, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false, ldapFilter,
 			[]string{"dn", "objectClass", "cn", "displayName", "sAMAccountName", "ou", "userAccountControl", "mail", "description"}, nil)
+		// Contrôle de pagination : première page sans cookie, pages suivantes
+		// avec le cookie retourné par la requête précédente.
 		if pageSize > 0 {
-			req.Controls = []ldap.Control{ldap.NewControlPaging(uint32(pageSize))}
+			ctrl := ldap.NewControlPaging(uint32(pageSize))
 			if filter.Cookie != "" {
-				// Note: go-ldap ne supporte pas directement le cookie string sur NewControlPaging
-				// Il faut utiliser SetCookie sur le contrôle
+				ctrl.Cookie = []byte(filter.Cookie)
 			}
+			req.Controls = []ldap.Control{ctrl}
 		}
 
 		res, err := conn.Search(req)

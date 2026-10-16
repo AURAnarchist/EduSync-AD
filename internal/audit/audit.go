@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite" // pilote pur Go, sans CGO
 
@@ -256,6 +257,73 @@ func (l *Log) Close() error {
 		return nil
 	}
 	return l.db.Close()
+}
+
+// PendingDeletion décrit une suppression planifiée (archivage de départ).
+type PendingDeletion struct {
+	ID             int64
+	UserDN         string
+	SAMAccountName string
+	NomComplet     string
+	MovedAt        string
+	SessionID      string
+	DelaiJours     int
+}
+
+// PurgeAvant retourne la date butoir (ISO 8601) au-delà de laquelle les
+// suppressions planifiées sont purgables.
+func PurgeAvant(delaiJours int) string {
+	return time.Now().UTC().AddDate(0, 0, -delaiJours).Format(time.RFC3339)
+}
+
+// RecordPendingDeletion enregistre une suppression planifiée.
+func (l *Log) RecordPendingDeletion(userDN, samAccountName, nomComplet, sessionID string, delaiJours int) error {
+	_, err := l.db.Exec(`
+		INSERT INTO pending_deletions
+			(user_dn, sam_account_name, nom_complet, moved_at, session_id, delai_jours)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		userDN, samAccountName, nomComplet, time.Now().UTC().Format(time.RFC3339), sessionID, delaiJours,
+	)
+	if err != nil {
+		return fmt.Errorf("audit: enregistrement suppression planifiée %s: %w", samAccountName, err)
+	}
+	return nil
+}
+
+// ListPendingDeletions retourne toutes les suppressions planifiées en attente.
+func (l *Log) ListPendingDeletions() ([]PendingDeletion, error) {
+	rows, err := l.db.Query(`
+		SELECT id, user_dn, sam_account_name, nom_complet, moved_at, session_id, delai_jours
+		FROM pending_deletions
+		ORDER BY moved_at`)
+	if err != nil {
+		return nil, fmt.Errorf("audit: lecture suppressions planifiées: %w", err)
+	}
+	defer rows.Close()
+
+	var out []PendingDeletion
+	for rows.Next() {
+		var p PendingDeletion
+		if err := rows.Scan(&p.ID, &p.UserDN, &p.SAMAccountName, &p.NomComplet, &p.MovedAt, &p.SessionID, &p.DelaiJours); err != nil {
+			return nil, fmt.Errorf("audit: lecture suppression planifiée: %w", err)
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// PurgeExpiredDeletions supprime les suppressions planifiées dont le délai est expiré.
+// Retourne le nombre de lignes purgées.
+func (l *Log) PurgeExpiredDeletions(delaiJours int) (int64, error) {
+	butoir := PurgeAvant(delaiJours)
+	res, err := l.db.Exec(`
+		DELETE FROM pending_deletions
+		WHERE moved_at <= ?`, butoir)
+	if err != nil {
+		return 0, fmt.Errorf("audit: purge suppressions expirées: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // ensureSchema crée les tables si besoin et applique les mêmes ALTER TABLE

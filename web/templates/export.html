@@ -1,0 +1,59 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "export.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "export.sous_titre"}}</p>
+  </div>
+
+  <!-- Formulaire d'export -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "export.format"}}</h2>
+
+    <form method="post" action="/app/export/csv"
+          hx-post="/app/export/csv" hx-target="#export-resultat" hx-swap="innerHTML"
+          class="mt-4 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label for="exp_ou" class="block text-sm font-medium">{{tr .Langue "users.col_ou"}}</label>
+          <input id="exp_ou" name="ou" type="text" placeholder="OU=Eleves,DC=EDUSYNC,DC=LOCAL"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <p class="mt-1 text-xs text-slate-500">DN de l'OU à exporter (sous-OU incluses)</p>
+        </div>
+        <div>
+          <label class="block text-sm font-medium">{{tr .Langue "export.champs"}}</label>
+          <div class="mt-1 grid grid-cols-2 gap-2">
+            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+              <input type="checkbox" name="champs" value="sAMAccountName" checked class="rounded-slate-500">
+              <span class="text-sm">Identifiant</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+              <input type="checkbox" name="champs" value="displayName" checked class="rounded-slate-500">
+              <span class="text-sm">Nom complet</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+              <input type="checkbox" name="champs" value="mail" class="rounded-slate-500">
+              <span class="text-sm">Email</span>
+            </label>
+            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+              <input type="checkbox" name="champs" value="ou" class="rounded-slate-500">
+              <span class="text-sm">OU</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex gap-2">
+        <button type="submit"
+                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "export.generer"}}
+        </button>
+        <a href="/app/export/pdf" class="rounded-md bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+          PDF étiquettes
+        </a>
+      </div>
+
+      <div id="export-resultat" class="mt-4"></div>
+    </form>
+  </div>
+</div>
+{{end}}

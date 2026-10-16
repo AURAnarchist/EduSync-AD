@@ -11,6 +11,7 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/csv"
@@ -22,6 +23,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +55,22 @@ type Options struct {
 	AuditPath string
 	// Version est affichée dans l'en-tête et le tableau de bord.
 	Version string
+}
+
+// noeudArbre enveloppe un nœud de l'arbre AD avec la langue de la page. Les
+// gabarits imbriqués ({{template}}) repartent avec un contexte propre ($ est
+// rebindé sur l'argument du gabarit appelé) : la langue doit donc voyager
+// avec le nœud pour que {{tr}} fonctionne dans explorer_tree_node.
+// Les champs de ExplorerNode sont promus : la syntaxe du gabarit reste
+// identique ({{.DN}}, {{.Children}}…).
+type noeudArbre struct {
+	*ad.ExplorerNode
+	Langue string
+}
+
+// noeudArbreConstruct fabrique l'enveloppe pour le gabarit explorer_tree_node.
+func noeudArbreConstruct(langue string, n *ad.ExplorerNode) noeudArbre {
+	return noeudArbre{ExplorerNode: n, Langue: langue}
 }
 
 // PageData est le modèle transmis aux templates.
@@ -109,6 +127,7 @@ type PageData struct {
 	ExplorerNodes []*ad.ExplorerNode
 	ExplorerUser  *ad.User
 	ExplorerGroup *ad.Group
+	ExplorerOU    *ad.OU
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -253,6 +272,7 @@ type session struct {
 // Server implémente http.Handler.
 type Server struct {
 	pages   map[string]*template.Template
+	racines map[string]string // fichier → nom du premier {{define}} du fichier
 	mux     *http.ServeMux
 	journal *audit.Log
 	opts    Options
@@ -270,29 +290,93 @@ func New(opts Options) (*Server, error) {
 	}
 
 	base, err := template.New("layout.html").
-		Funcs(template.FuncMap{"tr": Tr, "horodatage": horodatage}).
+		Funcs(template.FuncMap{"tr": Tr, "horodatage": horodatage, "noeud": noeudArbreConstruct}).
 		ParseFS(web.FS, "templates/layout.html")
 	if err != nil {
 		_ = journal.Close()
 		return nil, fmt.Errorf("ui: lecture du gabarit layout: %w", err)
 	}
 
-	pages := make(map[string]*template.Template, 2)
-	for _, nom := range []string{"login.html", "dashboard.html"} {
+	// Découverte de tous les gabarits : les fichiers définissant « content »
+	// sont des pages complètes (rendues dans le layout), les autres sont des
+	// fragments partagés (explorer_tree, explorer_results…) référencés par
+	// les pages via {{template}} et rendus seuls dans les cibles HTMX.
+	chemins, err := fs.Glob(web.FS, "templates/*.html")
+	if err != nil {
+		_ = journal.Close()
+		return nil, fmt.Errorf("ui: énumération des gabarits: %w", err)
+	}
+	var fichiersPages, fichiersFragments []string
+	racines := make(map[string]string, len(chemins))
+	for _, chemin := range chemins {
+		nom := filepath.Base(chemin)
+		if nom == "layout.html" {
+			continue
+		}
+		brut, err := fs.ReadFile(web.FS, chemin)
+		if err != nil {
+			_ = journal.Close()
+			return nil, fmt.Errorf("ui: lecture de %s: %w", nom, err)
+		}
+		racines[nom] = premierDefine(brut)
+		if bytes.Contains(brut, []byte(`{{define "content"}}`)) {
+			fichiersPages = append(fichiersPages, chemin)
+		} else {
+			fichiersFragments = append(fichiersFragments, chemin)
+		}
+	}
+	if len(fichiersPages) == 0 {
+		_ = journal.Close()
+		return nil, fmt.Errorf("ui: aucun gabarit de page trouvé")
+	}
+
+	// Chaque jeu = layout + fragments partagés + le fichier courant. Les
+	// fragments ne définissent jamais « content » : aucune collision possible
+	// avec la page du jeu.
+	pages := make(map[string]*template.Template, len(fichiersPages)+len(fichiersFragments))
+	jeu := func(nom, fichier string) error {
 		page, err := base.Clone()
+		if err != nil {
+			return fmt.Errorf("duplication du gabarit: %w", err)
+		}
+		if len(fichiersFragments) > 0 {
+			if _, err := page.ParseFS(web.FS, fichiersFragments...); err != nil {
+				return fmt.Errorf("lecture des fragments pour %s: %w", nom, err)
+			}
+		}
+		if fichier != "" {
+			if _, err := page.ParseFS(web.FS, fichier); err != nil {
+				return fmt.Errorf("lecture du gabarit %s: %w", nom, err)
+			}
+		}
+		pages[nom] = page
+		return nil
+	}
+	// …puis un jeu par page (contenant déjà les fragments, + sa page).
+	for _, chemin := range fichiersPages {
+		nom := filepath.Base(chemin)
+		if err := jeu(nom, chemin); err != nil {
+			_ = journal.Close()
+			return nil, fmt.Errorf("ui: %w", err)
+		}
+	}
+	for _, chemin := range fichiersFragments {
+		nom := filepath.Base(chemin)
+		jeuFrag, err := base.Clone()
 		if err != nil {
 			_ = journal.Close()
 			return nil, fmt.Errorf("ui: duplication du gabarit: %w", err)
 		}
-		if _, err := page.ParseFS(web.FS, "templates/"+nom); err != nil {
+		if _, err := jeuFrag.ParseFS(web.FS, fichiersFragments...); err != nil {
 			_ = journal.Close()
-			return nil, fmt.Errorf("ui: lecture du gabarit %s: %w", nom, err)
+			return nil, fmt.Errorf("ui: lecture des fragments pour %s: %w", nom, err)
 		}
-		pages[nom] = page
+		pages[nom] = jeuFrag
 	}
 
 	s := &Server{
 		pages:    pages,
+		racines:  racines,
 		journal:  journal,
 		opts:     opts,
 		sessions: map[string]*session{},
@@ -336,6 +420,17 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/migration/plan", s.requireAuth(s.migrationPlan))
 	mux.HandleFunc("POST /app/migration/simulate", s.requireAuth(s.migrationSimulate))
 	mux.HandleFunc("POST /app/migration/execute", s.requireAuth(s.migrationExecute))
+
+	// Départs (M3)
+	mux.HandleFunc("GET /app/departs", s.requireAuth(s.pageDeparts))
+	mux.HandleFunc("POST /app/departs/simulate", s.requireAuth(s.departsSimulate))
+	mux.HandleFunc("POST /app/departs/execute", s.requireAuth(s.departsExecute))
+
+	// Paramètres globaux (M8)
+	mux.HandleFunc("GET /app/parametres", s.requireAuth(s.pageParametres))
+	mux.HandleFunc("POST /app/parametres/comptes", s.requireAuth(s.parametresComptes))
+	mux.HandleFunc("POST /app/parametres/mots_de_passe", s.requireAuth(s.parametresMotsDePasse))
+	mux.HandleFunc("POST /app/parametres/apparence", s.requireAuth(s.parametresApparence))
 
 	mux.HandleFunc("GET /app/explorer", s.requireAuth(s.pageExplorer))
 	mux.HandleFunc("POST /app/explorer/search", s.requireAuth(s.explorerSearch))
@@ -766,7 +861,7 @@ func (s *Server) themeCourant(r *http.Request) string {
 	return "clair"
 }
 
-// rendre exécute un gabarit de page.
+// rendre exécute un gabarit de page (avec layout complet).
 func (s *Server) rendre(w http.ResponseWriter, status int, page string, d PageData) {
 	t, ok := s.pages[page]
 	if !ok {
@@ -779,6 +874,43 @@ func (s *Server) rendre(w http.ResponseWriter, status int, page string, d PageDa
 		// Le flux est déjà parti : on trace plutôt que de planter.
 		fmt.Fprintf(os.Stderr, "ui: rendu de %s: %v\n", page, err)
 	}
+}
+
+// rendreFragment exécute uniquement le gabarit racine d'un fichier (premier
+// {{define}} : « content » pour une page, le nom du fragment sinon), sans
+// layout. C'est le rendu destiné aux cibles HTMX (innerHTML) et au fetch()
+// de l'explorateur : la réponse doit être un fragment autonome, jamais un
+// document complet imbriqué.
+func (s *Server) rendreFragment(w http.ResponseWriter, status int, fichier string, d PageData) {
+	t, ok := s.pages[fichier]
+	if !ok {
+		http.Error(w, "gabarit inconnu: "+fichier, http.StatusInternalServerError)
+		return
+	}
+	nom := s.racines[fichier]
+	if nom == "" {
+		http.Error(w, "gabarit sans {{define}}: "+fichier, http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if err := t.ExecuteTemplate(w, nom, d); err != nil {
+		fmt.Fprintf(os.Stderr, "ui: rendu fragment %s (%s): %v\n", fichier, nom, err)
+	}
+}
+
+// regexpDefine extrait les {{define "nom"}} d'un gabarit.
+var regexpDefine = regexp.MustCompile(`{{\s*define\s+"([^"]+)"\s*}}`)
+
+// premierDefine retourne le nom du premier {{define}} d'un fichier gabarit
+// (racine de ce fichier). Retourne "" si le fichier n'en définit aucun.
+func premierDefine(brut []byte) string {
+	// Ignorer les {{define}} imbriqués dans un commentaire Go — non applicable
+	// ici : les gabarits du dépôt ne commentent pas leurs définitions.
+	if m := regexpDefine.FindSubmatch(brut); m != nil {
+		return string(m[1])
+	}
+	return ""
 }
 
 // erreurs renvoie un fragment HTML de validation (usage HTMX, cible #erreurs).
@@ -1848,6 +1980,215 @@ func (s *Server) migrationExecute(w http.ResponseWriter, r *http.Request, sess *
 	s.rendre(w, http.StatusOK, "migration_execute.html", d)
 }
 
+// ─── Page Départs ──────────────────────────────────────────────────────
+
+func (s *Server) pageDeparts(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	d := s.donnees(r, Tr(s.langue(r), "departs.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "departs.html", d)
+}
+
+func (s *Server) departsSimulate(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	mode := ad.DepartMode(r.FormValue("mode"))
+	delaiJours := 0
+	if v := r.FormValue("delai_jours"); v != "" {
+		fmt.Sscanf(v, "%d", &delaiJours)
+	}
+
+	params := ad.DepartParams{
+		UserDN:     userDN,
+		Mode:       mode,
+		DelaiJours: delaiJours,
+		Motif:      r.FormValue("motif"),
+	}
+
+	result, err := pool.DepartSimulate(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	s.rendreDepartResultat(w, langue, result)
+}
+
+func (s *Server) departsExecute(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	mode := ad.DepartMode(r.FormValue("mode"))
+	delaiJours := 0
+	if v := r.FormValue("delai_jours"); v != "" {
+		fmt.Sscanf(v, "%d", &delaiJours)
+	}
+
+	params := ad.DepartParams{
+		UserDN:     userDN,
+		Mode:       mode,
+		DelaiJours: delaiJours,
+		Motif:      r.FormValue("motif"),
+	}
+
+	result, err := pool.DepartExecute(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	// Journaliser le départ
+	if s.journal != nil {
+		entree := nouvelleEntree("depart", result.SAMAccountName, result.Statut,
+			fmt.Sprintf("Mode: %s, délai: %d jours, motif: %s", params.Mode, params.DelaiJours, params.Motif))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+
+	// Si mode différé, enregistrer la suppression planifiée dans le journal
+	if params.Mode == ad.DepartModeDiffere && result.Statut == "succes" && s.journal != nil {
+		sid := s.getSessionID(r)
+		_ = s.journal.RecordPendingDeletion(result.UserDN, result.SAMAccountName, result.DisplayName, sid, params.DelaiJours)
+	}
+
+	s.rendreDepartResultat(w, langue, result)
+}
+
+// rendreDepartResultat affiche le résultat d'un départ (simulation ou exécution).
+func (s *Server) rendreDepartResultat(w http.ResponseWriter, langue string, result *ad.DepartResult) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">Désactivation / Réactivation</h2>`)
+	b.WriteString(`<div class="mt-2 space-y-2">`)
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>Identifiant:</strong> %s</p>`, result.SAMAccountName))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>Nom:</strong> %s</p>`, result.DisplayName))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>Mode:</strong> %s</p>`, result.Mode))
+	if result.DelaiJours > 0 {
+		b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>Délai avant purge:</strong> %d jours</p>`, result.DelaiJours))
+	}
+	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>Statut:</strong> %s</p>`, result.Statut))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>Détail:</strong> %s</p>`, result.Detail))
+	b.WriteString(`</div></div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Page Paramètres globaux ───────────────────────────────────────────
+
+func (s *Server) pageParametres(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	d := s.donnees(r, Tr(s.langue(r), "parametres.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+
+	s.rendre(w, http.StatusOK, "parametres.html", d)
+}
+
+// parametresComptes sauvegarde l'onglet Comptes (génération identifiants,
+// doublons, groupes de classe, OU).
+func (s *Server) parametresComptes(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	maj := func(cfg *config.AppConfig) {
+		cfg.IdentifiantFormatEleve = strings.TrimSpace(r.FormValue("format_eleve"))
+		cfg.IdentifiantFormatPersonnel = strings.TrimSpace(r.FormValue("format_personnel"))
+		cfg.RegleDoublons = models.DoublonRule(strings.TrimSpace(r.FormValue("regle_doublons")))
+		cfg.ReglePrenomCompose = models.PrenomComposeRule(strings.TrimSpace(r.FormValue("regle_prenom")))
+		cfg.GroupesClasseAuto = r.FormValue("groupes_auto") == "1"
+		cfg.OUParenteClasses = strings.TrimSpace(r.FormValue("ou_parente"))
+		cfg.OUArchive = strings.TrimSpace(r.FormValue("ou_archive"))
+		if v := r.FormValue("delai_suppression"); v != "" {
+			fmt.Sscanf(v, "%d", &cfg.DelaiSuppressionJours)
+		}
+		cfg.DomaineMail = strings.TrimSpace(r.FormValue("domaine_mail"))
+		cfg.FormatMail = strings.TrimSpace(r.FormValue("format_mail"))
+	}
+	if err := s.majConfig(maj); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.config")+": "+err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// parametresMotsDePasse sauvegarde l'onglet Mots de passe (politiques).
+func (s *Server) parametresMotsDePasse(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	maj := func(cfg *config.AppConfig) {
+		// Politique élèves
+		if v := r.FormValue("pwd_eleve_longueur"); v != "" {
+			fmt.Sscanf(v, "%d", &cfg.PolitiqueMDPEleve.Longueur)
+		}
+		cfg.PolitiqueMDPEleve.Majuscules = r.FormValue("pwd_eleve_majuscules") == "1"
+		cfg.PolitiqueMDPEleve.Chiffres = r.FormValue("pwd_eleve_chiffres") == "1"
+		cfg.PolitiqueMDPEleve.CaracteresSpeciaux = r.FormValue("pwd_eleve_speciaux") == "1"
+		cfg.PolitiqueMDPEleve.MotDePasseIdentique = r.FormValue("pwd_eleve_interdit_info") == "1"
+
+		// Politique personnels
+		if v := r.FormValue("pwd_personnel_longueur"); v != "" {
+			fmt.Sscanf(v, "%d", &cfg.PolitiqueMDPPersonnel.Longueur)
+		}
+		cfg.PolitiqueMDPPersonnel.Majuscules = r.FormValue("pwd_personnel_majuscules") == "1"
+		cfg.PolitiqueMDPPersonnel.Chiffres = r.FormValue("pwd_personnel_chiffres") == "1"
+		cfg.PolitiqueMDPPersonnel.CaracteresSpeciaux = r.FormValue("pwd_personnel_speciaux") == "1"
+		cfg.PolitiqueMDPPersonnel.MotDePasseIdentique = r.FormValue("pwd_personnel_interdit_info") == "1"
+	}
+	if err := s.majConfig(maj); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.config")+": "+err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// parametresApparence sauvegarde l'onglet Apparence (thème, langue).
+func (s *Server) parametresApparence(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	maj := func(cfg *config.AppConfig) {
+		theme := strings.TrimSpace(r.FormValue("theme"))
+		if theme == "clair" || theme == "sombre" {
+			cfg.Theme = theme
+		}
+		langue := strings.TrimSpace(r.FormValue("langue"))
+		if langue == "fr" || langue == "en" {
+			cfg.Langue = langue
+		}
+	}
+	if err := s.majConfig(maj); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.config")+": "+err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // actionLabel retourne le libellé d'action pour une ligne de migration
 func (s *Server) actionLabel(row ad.MigrationRow, langue string) string {
 	if row.Error != "" {
@@ -1867,6 +2208,15 @@ func (s *Server) pageExplorer(w http.ResponseWriter, r *http.Request, sess *sess
 	d.Utilisateur = sess.Utilisateur
 	d.Domaine = sess.Domaine
 	d.Controleur = sess.Controleur
+
+	// Arbre rendu côté serveur (affichage immédiat, utilisable sans JS) ;
+	// en cas d'échec, le client retente un chargement à vide.
+	tree, err := pool.BuildTree(r.Context(), pool.BaseDN(), 3, true)
+	if err != nil {
+		d.Erreurs = append(d.Erreurs, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+	} else {
+		d.ExplorerTree = tree
+	}
 	s.rendre(w, http.StatusOK, "explorer.html", d)
 }
 
@@ -1882,6 +2232,7 @@ func (s *Server) explorerSearch(w http.ResponseWriter, r *http.Request, sess *se
 		Query:           r.PostFormValue("q"),
 		ObjectTypes:     r.Form["object_types"],
 		BaseDN:          r.FormValue("base_dn"),
+		Cookie:          r.PostFormValue("cookie"),
 		PageSize:        100,
 		IncludeDisabled: r.FormValue("include_disabled") == "1",
 	}
@@ -1895,7 +2246,7 @@ func (s *Server) explorerSearch(w http.ResponseWriter, r *http.Request, sess *se
 	d := s.donnees(r, Tr(langue, "explorer.results_title"))
 	d.SearchResult = result
 	d.LDAPFallback = sess.LDAPFallback
-	s.rendre(w, http.StatusOK, "explorer_results.html", d)
+	s.rendreFragment(w, http.StatusOK, "explorer_results.html", d)
 }
 
 func (s *Server) explorerTree(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
@@ -1912,7 +2263,7 @@ func (s *Server) explorerTree(w http.ResponseWriter, r *http.Request, sess *sess
 		d := s.donnees(r, Tr(langue, "explorer.tree_title"))
 		d.ExplorerTree = tree
 		d.LDAPFallback = sess.LDAPFallback
-		s.rendre(w, http.StatusOK, "explorer_tree.html", d)
+		s.rendreFragment(w, http.StatusOK, "explorer_tree.html", d)
 		return
 	}
 
@@ -1925,7 +2276,7 @@ func (s *Server) explorerTree(w http.ResponseWriter, r *http.Request, sess *sess
 	d := s.donnees(r, "")
 	d.ExplorerNodes = nodes
 	d.LDAPFallback = sess.LDAPFallback
-	s.rendre(w, http.StatusOK, "explorer_tree.html", d)
+	s.rendreFragment(w, http.StatusOK, "explorer_tree.html", d)
 }
 
 func (s *Server) explorerDetails(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
@@ -1935,24 +2286,37 @@ func (s *Server) explorerDetails(w http.ResponseWriter, r *http.Request, sess *s
 		return
 	}
 
+	langue := s.langue(r)
 	user, err := pool.UserGet(r.Context(), dn)
-	if err != nil {
-		group, err2 := pool.GroupGet(r.Context(), dn)
-		if err2 != nil {
-			s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
-			return
-		}
-		d := s.donnees(r, Tr(s.langue(r), "explorer.details_title"))
-		d.ExplorerGroup = group
+	if err == nil {
+		d := s.donnees(r, Tr(langue, "explorer.details_title"))
+		d.ExplorerUser = user
 		d.LDAPFallback = sess.LDAPFallback
-		s.rendre(w, http.StatusOK, "explorer_details.html", d)
+		s.rendreFragment(w, http.StatusOK, "explorer_details.html", d)
 		return
 	}
 
-	d := s.donnees(r, Tr(s.langue(r), "explorer.details_title"))
-	d.ExplorerUser = user
-	d.LDAPFallback = sess.LDAPFallback
-	s.rendre(w, http.StatusOK, "explorer_details.html", d)
+	group, err := pool.GroupGet(r.Context(), dn)
+	if err == nil {
+		d := s.donnees(r, Tr(langue, "explorer.details_title"))
+		d.ExplorerGroup = group
+		d.LDAPFallback = sess.LDAPFallback
+		s.rendreFragment(w, http.StatusOK, "explorer_details.html", d)
+		return
+	}
+
+	// Ni utilisateur ni groupe : peut-être une OU (cas des résultats de
+	// recherche qui incluent les OU).
+	ou, err := pool.OUGet(r.Context(), dn)
+	if err == nil {
+		d := s.donnees(r, Tr(langue, "explorer.details_title"))
+		d.ExplorerOU = ou
+		d.LDAPFallback = sess.LDAPFallback
+		s.rendreFragment(w, http.StatusOK, "explorer_details.html", d)
+		return
+	}
+
+	s.erreur(w, Tr(langue, "explorer.erreur_dn_manquant")+": "+dn)
 }
 
 // ─── Page Export ───────────────────────────────────────────────────────
@@ -1967,17 +2331,99 @@ func (s *Server) pageExport(w http.ResponseWriter, r *http.Request, sess *sessio
 }
 
 func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: pool.ExportCSV
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	ou := strings.TrimSpace(r.FormValue("ou"))
+	champs := r.Form["champs"]
+	if len(champs) == 0 {
+		champs = []string{"sAMAccountName", "displayName", "mail"}
+	}
+
+	var fields []ad.ExportField
+	for _, c := range champs {
+		fields = append(fields, ad.ExportField(c))
+	}
+
+	// Rechercher les utilisateurs dans l'OU demandée.
+	users, err := pool.UserSearch(r.Context(), ou,
+		"(&(objectClass=user)(objectCategory=person))",
+		[]string{"dn", "sAMAccountName", "displayName", "givenName", "sn", "mail", "ou", "userPrincipalName", "description"},
+		0)
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	params := ad.ExportParams{
+		Format:        ad.FormatCSV,
+		Fields:        fields,
+		IncludeHeader: true,
+		Separator:     ';',
+		Users:         users,
+		Title:         "Export EduSync AD",
+	}
+
+	data, err := pool.ExportCSV(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.export")+": "+err.Error())
+		return
+	}
+
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
 	w.Header().Set("Content-Disposition", "attachment; filename=export.csv")
-	w.Write([]byte("sAMAccountName;displayName;mail\n"))
+	w.Write(data)
 }
 
 func (s *Server) exportPDF(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: pool.ExportLabelsPDF / ExportTrombinoscope
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	ou := strings.TrimSpace(r.FormValue("ou"))
+	template := ad.LabelTemplate(r.FormValue("template"))
+	if template == "" {
+		template = ad.LabelL7160
+	}
+	champs := r.Form["champs"]
+	if len(champs) == 0 {
+		champs = []string{"displayName", "sAMAccountName", "mail", "ou"}
+	}
+
+	var fields []ad.ExportField
+	for _, c := range champs {
+		fields = append(fields, ad.ExportField(c))
+	}
+
+	users, err := pool.UserSearch(r.Context(), ou,
+		"(&(objectClass=user)(objectCategory=person))",
+		[]string{"dn", "sAMAccountName", "displayName", "givenName", "sn", "mail", "ou", "userPrincipalName", "description"},
+		0)
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	params := ad.ExportParams{
+		Format:   ad.FormatPDF,
+		Template: template,
+		Fields:   fields,
+		Users:    users,
+		Title:    "Étiquettes EduSync AD",
+	}
+
+	data, err := pool.ExportLabelsPDF(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.export")+": "+err.Error())
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", "attachment; filename=export.pdf")
-	w.Write([]byte("%PDF-1.4\n%...\n"))
+	w.Header().Set("Content-Disposition", "attachment; filename=etiquettes.pdf")
+	w.Write(data)
 }
 
 // ─── Page Audit ────────────────────────────────────────────────────────
@@ -1997,8 +2443,31 @@ func (s *Server) pageAudit(w http.ResponseWriter, r *http.Request, sess *session
 }
 
 func (s *Server) auditFilter(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
-	// TODO: filtrage journal
-	s.rendre(w, http.StatusOK, "audit_results.html", s.donnees(r, "Audit filtré"))
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	f := audit.Filter{
+		From:       strings.TrimSpace(r.FormValue("date_debut")),
+		To:         strings.TrimSpace(r.FormValue("date_fin")),
+		ActionType: strings.TrimSpace(r.FormValue("type_action")),
+		Resultat:   strings.TrimSpace(r.FormValue("resultat")),
+		Operateur:  strings.TrimSpace(r.FormValue("operateur")),
+		Recherche:  strings.TrimSpace(r.FormValue("recherche")),
+		Limit:      200,
+	}
+
+	entries, err := s.journal.List(f)
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.journal")+": "+err.Error())
+		return
+	}
+
+	d := s.donnees(r, Tr(s.langue(r), "audit.titre"))
+	d.Actions = entries
+	d.LDAPFallback = sess.LDAPFallback
+	s.rendreFragment(w, http.StatusOK, "audit_results.html", d)
 }
 
 // ─── Rendu simulation utilisateurs ────────────────────────────────────

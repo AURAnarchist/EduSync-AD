@@ -7,7 +7,7 @@
         <span class="text-slate-500">{{.SearchResult.Total}} {{tr .Langue "explorer.total"}}</span>
         {{if .SearchResult.Cookie}}
           <button hx-post="/app/explorer/search" hx-target="#explorer-results" hx-swap="innerHTML"
-                  hx-vals='{"q": "", "page": "next", "cookie": "{{.SearchResult.Cookie}}"}'
+                  hx-include="#form-recherche" hx-vals='{"cookie": "{{.SearchResult.Cookie}}"}'
                   class="text-sm text-indigo-600 hover:text-indigo-500">
             {{tr .Langue "explorer.next_page"}}
           </button>
@@ -34,20 +34,24 @@
         <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
             @click="showDetails('{{.DN}}')">
           <td class="px-4 py-2">
-            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" x-show="ObjectType === 'user'"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
-            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" x-show="ObjectType === 'group'"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
-            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20" x-show="ObjectType === 'ou'"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm10 9H6V4h12v9z" clip-rule="evenodd"/></svg>
+            {{if eq .ObjectType "user"}}
+            <svg class="w-5 h-5 text-emerald-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+            {{else if eq .ObjectType "group"}}
+            <svg class="w-5 h-5 text-indigo-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+            {{else}}
+            <svg class="w-5 h-5 text-slate-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 0v12h8V4H6z" clip-rule="evenodd"/></svg>
+            {{end}}
           </td>
           <td class="px-4 py-2">
             <span class="rounded-full px-2 py-0.5 text-xs font-medium {{if eq .ObjectType "user"}}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300{{else if eq .ObjectType "group"}}bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300{{else if eq .ObjectType "ou"}}bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200{{else}}bg-slate-100 text-slate-800{{end}}">
-              {{if eq .ObjectType "user"}}{{tr .Langue "explorer.type_user"}}{{else if eq .ObjectType "group"}}{{tr .Langue "explorer.type_group"}}{{else if eq .ObjectType "ou"}}{{tr .Langue "explorer.type_ou"}}{{else}}{{.ObjectType}}{{end}}
+              {{if eq .ObjectType "user"}}{{tr $.Langue "explorer.type_user"}}{{else if eq .ObjectType "group"}}{{tr $.Langue "explorer.type_group"}}{{else if eq .ObjectType "ou"}}{{tr $.Langue "explorer.type_ou"}}{{else}}{{.ObjectType}}{{end}}
             </span>
           </td>
           <td class="px-4 py-2 font-medium">{{.DisplayName}}</td>
           <td class="px-4 py-2 text-slate-500 dark:text-slate-400">{{.OU}}</td>
           <td class="px-4 py-2">
             <span class="rounded-full px-2 py-0.5 text-xs font-medium {{if .Enabled}}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300{{else}}bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300{{end}}">
-              {{if .Enabled}}{{tr .Langue "explorer.enabled"}}{{else}}{{tr .Langue "explorer.disabled_label"}}{{end}}
+              {{if .Enabled}}{{tr $.Langue "explorer.enabled"}}{{else}}{{tr $.Langue "explorer.disabled_label"}}{{end}}
             </span>
           </td>
           <td class="px-4 py-2 text-slate-500 dark:text-slate-400 max-w-xs truncate">{{.Description}}</td>
@@ -60,7 +64,7 @@
   {{if .SearchResult.Cookie}}
   <div class="border-t border-slate-200 px-4 py-3 dark:border-slate-800">
     <button hx-post="/app/explorer/search" hx-target="#explorer-results" hx-swap="innerHTML"
-            hx-vals='{"q": "", "page": "next", "cookie": "{{.SearchResult.Cookie}}"}'
+            hx-include="#form-recherche" hx-vals='{"cookie": "{{.SearchResult.Cookie}}"}'
             class="w-full rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
       {{tr .Langue "explorer.next_page"}}
     </button>
