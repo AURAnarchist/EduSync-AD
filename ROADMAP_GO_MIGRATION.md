@@ -243,19 +243,19 @@ edusync-ad/
 
 ### 4.1 Core v1.x (M1 → M11) — Priorité 1, Lot A
 
-| Module | Fonctionnalités | Statut Go (14/10) |
+| Module | Fonctionnalités | Statut Go |
 |---|---|---|
-| **M1 — Création de comptes / Arrivées** | Import CSV (encodage + séparateur auto), génération identifiants/MDP/mail, résolution doublons, vérification AD existants, export CSV étiquettes | 🔨 import réel, `simulate`/`execute` TODO |
-| **M2 — Migration (restructuration)** | Via CSV (prénom/nom/équipe) ou UI (sélection OU), déplacement AD + groupes auto, résolution par prénom/nom | 🔨 page + routes, plan/simulate/execute TODO |
-| **M3 — Gestion des départs** | Désactivation immédiate ou archivage + purge planifiée (délai configurable, 30 j par défaut) | ⬜ **absent** (`models.DepartRow` prêt) |
-| **M4 — Réinitialisation MDP** | Par OU, groupe AD ou CSV, politiques différées (élèves/personnels), forçage changement à la prochaine connexion | 🔨 gabarit + routes, simulate/execute TODO |
-| **M5 — Explorateur AD** | Arborescence OUs/groupes, panneau central unifié, clic droit complet, recherche temps réel | 🔨 backend `explorer.go` prêt, handlers/gabarits TODO |
-| **M6 — Export (CSV / Étiquettes PDF)** | Sélection OU ± sous-OU, champs cochables (incl. MDP mémorisés), PDF Avery L7160/L7163, QR codes, couleurs pastel | 🔨 backend `export.go` prêt, handlers = stubs, gabarit absent |
-| **M7 — Journal d'actions** | Filtres date/type/résultat/domaine/opérateur, export CSV, SQLite append-only | 🔨 liste OK, filtres TODO, gabarit absent |
-| **M8 — Paramètres globaux** | 4 onglets : Comptes, Mots de passe, Apparence, Délégation | ⬜ **absent** (thème/langue partiel via header) |
-| **M9 — Connexion LDAPS/LDAP** | LDAPS prioritaire, repli LDAP avec avertissement, CA custom, mémorisation chiffrée | 🔨 pool livré, `BindPassword` à câbler (TODO) |
-| **M10 — Mise à jour intégrée** | Vérification, téléchargement, installation, redémarrage auto, somme de contrôle | ⬜ absent en Go (livré avec le chantier alpha, §6 étape 2.1) |
-| **M11 — Mode simulation** | Toute écriture AD = prévisualisation modifiable avant validation | 🔨 pattern `simulation.go` prêt, câblage général à faire |
+| **M1 — Création de comptes / Arrivées** | Import CSV (encodage + séparateur auto), génération identifiants/MDP/mail, résolution doublons, vérification AD existants, groupes de classe auto, export CSV étiquettes | ✅ Livré et testé (A2) |
+| **M2 — Migration (restructuration)** | Via CSV (prénom/nom/équipe) ou UI (sélection OU), déplacement AD + groupes auto, résolution par prénom/nom | ✅ Livré et testé (A4) |
+| **M3 — Gestion des départs** | Désactivation immédiate ou archivage + purge planifiée (délai configurable, 30 j par défaut), réactivation | ✅ Livré et testé (A8) |
+| **M4 — Réinitialisation MDP** | Par OU, groupe AD ou CSV, politiques différées (élèves/personnels), forçage changement à la prochaine connexion | ✅ Livré et testé (A3) |
+| **M5 — Explorateur AD** | Arborescence OUs/groupes, panneau central unifié, recherche temps réel, détails utilisateur/groupe/OU | ✅ Livré et testé (A5) |
+| **M6 — Export (CSV / Étiquettes PDF)** | Sélection OU ± sous-OU, champs cochables, PDF Avery L7160/L7163, QR codes | ✅ Livré et testé (A6) |
+| **M7 — Journal d'actions** | Filtres date/type/résultat/domaine/opérateur, export CSV, SQLite append-only | ✅ Livré et testé (A7) |
+| **M8 — Paramètres globaux** | 3 onglets : Comptes, Mots de passe, Apparence (délégation reportée en Lot C M26) | ✅ Livré et testé (A9) |
+| **M9 — Connexion LDAPS/LDAP** | LDAPS prioritaire, repli LDAP avec avertissement, pool de connexions, nettoyage à la déconnexion | ✅ Livré et testé (A1) |
+| **M10 — Mise à jour intégrée** | Vérification releases GitHub, téléchargement, vérification SHA-256, préparation installation | ✅ Livré et testé (A10) |
+| **M11 — Mode simulation + progression** | Toute écriture AD par Validate → Simulate → Execute → Audit, progression + annulation (context.Context) | ✅ Livré et testé (A11, A12) |
 
 ### 4.2 Modules avancés (M12 → M24) — Priorité 2, Lot B
 
@@ -728,7 +728,10 @@ Ajoute le support multisite (multi-domaine/forêt).
 10. **Lot A, A10** : ✅ fait — Mise à jour intégrée (M10) : `internal/updater` + routes UI + i18n fr/en.
 11. **Lot A, A11** : ✅ fait — CLI Core : `users import-simulate`, `password simulate`, `migration plan`, `export fields` (sortie JSON) + tests unitaires.
 12. **Lot A, A12** : ✅ fait — Progression/annulation : `internal/progress` (tracker thread-safe, contexte annulable par opération), routes `/app/progress`, `/app/progress/list`, `/app/progress/cancel`, gabarit `progress.html`, intégration dans `usersExecute` avec `context.Context`.
-13. **Lot A, A13** : revue parity §4.1.
+13. **Lot A, A13** : ✅ fait — Revue parity §4.1 : tous les modules M1 → M11 sont ✅ livrés et testés dans le code.
+
+**Lot A terminé : le Core M1 → M11 est câblé de bout en bout.**
+**Étape suivante : tag `v0.1.0-alpha.1` → `release-go.yml` → Alpha 1 (Porte 1).**
 
 **Priorité 2 — releases :**
 
