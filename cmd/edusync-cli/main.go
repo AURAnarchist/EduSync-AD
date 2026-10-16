@@ -58,6 +58,10 @@ Commandes :
   paths                   Affiche les chemins locaux (config, données, journal)
   config show             Affiche la configuration au format JSON
   audit list              Liste le journal d'actions
+  users import-simulate   Simule l'import d'utilisateurs depuis un CSV (JSON)
+  password simulate       Génère des mots de passe selon une politique (JSON)
+  migration plan          Construit un plan de migration depuis un CSV (JSON)
+  export fields           Liste les champs d'export disponibles (JSON)
   departs simulate        Simule un départ (sans écriture AD)
   departs pending list    Liste les suppressions planifiées
   departs pending purge   Purge les suppressions expirées
@@ -93,6 +97,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdConfig(args[1:], stdout, stderr)
 	case "audit":
 		return cmdAudit(args[1:], stdout, stderr)
+	case "users":
+		return cmdUsers(args[1:], stdout, stderr)
+	case "password":
+		return cmdPassword(args[1:], stdout, stderr)
+	case "migration":
+		return cmdMigration(args[1:], stdout, stderr)
+	case "export":
+		return cmdExport(args[1:], stdout, stderr)
 	case "departs":
 		return cmdDepart(args[1:], stdout, stderr)
 	case "connect":

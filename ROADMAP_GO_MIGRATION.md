@@ -726,8 +726,9 @@ Ajoute le support multisite (multi-domaine/forêt).
 8. **Lot A, A8** : ✅ fait — Départs (M3) : `internal/ad/depart.go` + routes + gabarit `departs.html` + CLI `departs` + i18n fr/en.
 9. **Lot A, A9** : ✅ fait — Paramètres (M8) : 3 onglets (comptes, mots de passe, apparence) + routes + gabarit `parametres.html` + i18n fr/en.
 10. **Lot A, A10** : ✅ fait — Mise à jour intégrée (M10) : `internal/updater` + routes UI + i18n fr/en.
-11. **Lot A, A11-A12** : simulation généralisée, CLI Core, progression/annulation.
-12. **Lot A, A13** : revue parity §4.1.
+11. **Lot A, A11** : ✅ fait — CLI Core : `users import-simulate`, `password simulate`, `migration plan`, `export fields` (sortie JSON) + tests unitaires.
+12. **Lot A, A12** : progression/annulation (`context.Context`) sur les opérations de masse.
+13. **Lot A, A13** : revue parity §4.1.
 
 **Priorité 2 — releases :**
 
