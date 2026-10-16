@@ -74,7 +74,7 @@
 | Gestion des départs (M3) | ✅ **Livré et testé** | `internal/ad/depart.go`, routes, gabarit `departs.html`, CLI `departs`, i18n fr/en |
 | Paramètres globaux (M8) | ✅ **Livré et testé** | 3 onglets (comptes, mots de passe, apparence), routes, gabarit `parametres.html`, i18n fr/en |
 | Mode simulation (M11) | 🔨 Pattern `simulation.go` prêt | Câler `Validate → Simulate → Execute → Audit` sur tous les modules ci-dessus |
-| Mise à jour intégrée (M10) | ⬜ Absente en Go | Auto-update + vérification `.sha256` (livrée avec le chantier alpha, §6 étape 2.1) |
+| Mise à jour intégrée (M10) | ✅ **Livrée et testée** | `internal/updater` (vérification GitHub releases, téléchargement, SHA-256, préparation installation) + routes UI `/app/updater/check` et `/app/updater/install`, i18n fr/en |
 
 ### Mesures constatées (Linux amd64 — Go 1.27.2, Wails v3.0.0-beta.29) — vérifiées le 15/10/2026
 
@@ -725,8 +725,9 @@ Ajoute le support multisite (multi-domaine/forêt).
 7. **Lot A, A7** : ✅ fait — Journal (M7) : `auditFilter` réel + gabarits `audit.html`/`audit_results.html`.
 8. **Lot A, A8** : ✅ fait — Départs (M3) : `internal/ad/depart.go` + routes + gabarit `departs.html` + CLI `departs` + i18n fr/en.
 9. **Lot A, A9** : ✅ fait — Paramètres (M8) : 3 onglets (comptes, mots de passe, apparence) + routes + gabarit `parametres.html` + i18n fr/en.
-10. **Lot A, A10-A12** : simulation généralisée, CLI Core, progression/annulation.
-11. **Lot A, A13** : revue parity §4.1.
+10. **Lot A, A10** : ✅ fait — Mise à jour intégrée (M10) : `internal/updater` + routes UI + i18n fr/en.
+11. **Lot A, A11-A12** : simulation généralisée, CLI Core, progression/annulation.
+12. **Lot A, A13** : revue parity §4.1.
 
 **Priorité 2 — releases :**
 

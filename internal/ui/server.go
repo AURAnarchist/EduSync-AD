@@ -16,6 +16,7 @@ import (
 	"crypto/rand"
 	"encoding/csv"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -32,6 +33,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/models"
+	"github.com/estemobs/EduSync-AD/internal/updater"
 	"github.com/estemobs/EduSync-AD/web"
 )
 
@@ -55,6 +57,8 @@ type Options struct {
 	AuditPath string
 	// Version est affichée dans l'en-tête et le tableau de bord.
 	Version string
+	// UpdaterAPIURL est l'URL de l'API GitHub releases (vide = défaut GitHub).
+	UpdaterAPIURL string
 }
 
 // noeudArbre enveloppe un nœud de l'arbre AD avec la langue de la page. Les
@@ -448,6 +452,10 @@ func (s *Server) routes() *http.ServeMux {
 	// Audit / Journal
 	mux.HandleFunc("GET /app/audit", s.requireAuth(s.pageAudit))
 	mux.HandleFunc("POST /app/audit/filter", s.requireAuth(s.auditFilter))
+
+	// Mise à jour intégrée (M10)
+	mux.HandleFunc("GET /app/updater/check", s.requireAuth(s.pageUpdaterCheck))
+	mux.HandleFunc("POST /app/updater/install", s.requireAuth(s.pageUpdaterInstall))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -2583,6 +2591,86 @@ func (s *Server) auditFilter(w http.ResponseWriter, r *http.Request, sess *sessi
 	d.Actions = entries
 	d.LDAPFallback = sess.LDAPFallback
 	s.rendreFragment(w, http.StatusOK, "audit_results.html", d)
+}
+
+// updaterAPIURLDefault est l'URL par défaut de l'API GitHub releases.
+const updaterAPIURLDefault = "https://api.github.com/repos/estemobs/EduSync-AD/releases/latest"
+
+// updaterInfoJSON est la structure de réponse JSON pour /app/updater/check.
+type updaterInfoJSON struct {
+	Version      string `json:"version"`
+	Current      string `json:"current"`
+	DownloadURL  string `json:"download_url"`
+	ChecksumURL  string `json:"checksum_url"`
+	ReleaseNotes string `json:"release_notes,omitempty"`
+	AJour        bool   `json:"a_jour"`
+}
+
+// pageUpdaterCheck vérifie s'il existe une mise à jour et retourne un JSON.
+func (s *Server) pageUpdaterCheck(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	apiURL := s.opts.UpdaterAPIURL
+	if apiURL == "" {
+		apiURL = updaterAPIURLDefault
+	}
+
+	info, err := updater.CheckForUpdate(r.Context(), apiURL, s.opts.Version)
+	if err != nil || info == nil {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(updaterInfoJSON{AJour: true})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(updaterInfoJSON{
+		Version:      info.Version,
+		Current:      info.Current,
+		DownloadURL:  info.DownloadURL,
+		ChecksumURL:  info.ChecksumURL,
+		ReleaseNotes: info.ReleaseNotes,
+		AJour:        false,
+	})
+}
+
+// pageUpdaterInstall télécharge et prépare l'installation de la mise à jour.
+// finalize n'est pas exécuté ici : l'appelant (UI) doit confirmer explicitement
+// avant d'appeler /app/updater/finalize — voir la note de sécurité dans
+// internal/updater (le lancement est différé après confirmation utilisateur).
+func (s *Server) pageUpdaterInstall(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	downloadURL := strings.TrimSpace(r.FormValue("download_url"))
+	checksumURL := strings.TrimSpace(r.FormValue("checksum_url"))
+	if downloadURL == "" {
+		s.erreur(w, Tr(s.langue(r), "erreur.url_manquante"))
+		return
+	}
+
+	ok, finalize, err := updater.DownloadAndInstall(r.Context(), downloadURL, checksumURL)
+	if err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.telechargement")+": "+err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"erreur": Tr(s.langue(r), "updater.echec_preparation")})
+		return
+	}
+
+	// Le clic sur "Installer" constitue la confirmation explicite de
+	// l'utilisateur : on lance la finalisation (installateur Windows /
+	// remplacement + relance Linux).
+	if finalize != nil {
+		go func() {
+			_ = finalize()
+		}()
+	}
+
+	_ = json.NewEncoder(w).Encode(map[string]string{"ok": Tr(s.langue(r), "updater.installation_lancee")})
 }
 
 // ─── Rendu simulation utilisateurs ────────────────────────────────────

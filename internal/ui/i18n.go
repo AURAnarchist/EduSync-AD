@@ -290,6 +290,18 @@ var messages = map[string]map[string]string{
 		"erreur.export":                     "Erreur lors de l'export",
 		"erreur.journal":                    "Erreur lors de la lecture du journal",
 		"erreur.config":                     "Erreur lors de l'enregistrement de la configuration",
+		"erreur.url_manquante":              "URL de téléchargement manquante",
+		"erreur.telechargement":             "Erreur lors du téléchargement de la mise à jour",
+
+		// Mise à jour intégrée (M10)
+		"updater.titre":               "Mises à jour",
+		"updater.verifier":            "Vérifier les mises à jour",
+		"updater.a_jour":              "Vous utilisez déjà la dernière version",
+		"updater.nouvelle_version":    "Nouvelle version disponible",
+		"updater.installer":           "Installer la mise à jour",
+		"updater.telechargement":      "Téléchargement en cours…",
+		"updater.installation_lancee": "Installation lancée, l'application va redémarrer",
+		"updater.echec_preparation":   "Échec de la préparation de l'installation",
 
 		// Départs (M3)
 		"departs.titre":          "Gestion des départs",
@@ -632,6 +644,18 @@ var messages = map[string]map[string]string{
 		"erreur.export":                     "Error during export",
 		"erreur.journal":                    "Error reading the journal",
 		"erreur.config":                     "Error saving configuration",
+		"erreur.url_manquante":              "Download URL missing",
+		"erreur.telechargement":             "Error downloading the update",
+
+		// Mise à jour intégrée (M10)
+		"updater.titre":               "Updates",
+		"updater.verifier":            "Check for updates",
+		"updater.a_jour":              "You are using the latest version",
+		"updater.nouvelle_version":    "New version available",
+		"updater.installer":           "Install update",
+		"updater.telechargement":      "Downloading…",
+		"updater.installation_lancee": "Installation started, the application will restart",
+		"updater.echec_preparation":   "Failed to prepare installation",
 
 		// Départs (M3)
 		"departs.titre":          "Departures",
