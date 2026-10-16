@@ -19,7 +19,7 @@
       <td class="px-4 py-2">
         <span class="rounded-full px-2 py-0.5 text-xs font-medium
           {{if eq .Resultat "succes"}}bg-emerald-100 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300{{else}}bg-amber-100 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300{{end}}">
-          {{if eq .Resultat "succes"}}{{tr .Langue "statut.succes"}}{{else}}{{.Resultat}}{{end}}</span>
+          {{if eq .Resultat "succes"}}{{tr $.Langue "statut.succes"}}{{else}}{{.Resultat}}{{end}}</span>
       </td>
       <td class="px-4 py-2">{{.Utilisateur}}</td>
       <td class="px-4 py-2">{{.Detail}}</td>

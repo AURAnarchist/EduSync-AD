@@ -35,7 +35,7 @@
             <td class="px-4 py-2">{{.OUCible}}</td>
             <td class="px-4 py-2">
               <span class="rounded-full px-2 py-0.5 text-xs font-medium {{if eq .Statut "succes"}}bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200{{else if eq .Statut "skip"}}bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200{{else}}bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200{{end}}">
-                {{if eq .Statut "succes"}}{{tr .Langue "statut.succes"}}{{else if eq .Statut "skip"}}{{tr .Langue "migration.statut.skip"}}{{else}}{{tr .Langue "col.erreur"}}{{end}}
+                {{if eq .Statut "succes"}}{{tr $.Langue "statut.succes"}}{{else if eq .Statut "skip"}}{{tr $.Langue "migration.statut.skip"}}{{else}}{{tr $.Langue "col.erreur"}}{{end}}
               </span>
             </td>
             <td class="px-4 py-2 text-slate-600 dark:text-slate-400">{{.Detail}}</td>

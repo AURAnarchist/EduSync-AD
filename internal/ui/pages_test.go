@@ -7,8 +7,11 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/estemobs/EduSync-AD/internal/ad"
+	"github.com/estemobs/EduSync-AD/internal/audit"
+	"github.com/estemobs/EduSync-AD/internal/models"
 	"github.com/estemobs/EduSync-AD/web"
 )
 
@@ -18,7 +21,7 @@ import (
 // nouveau gabarit de page est couvert automatiquement.
 func TestGabaritsModulesEnregistres(t *testing.T) {
 	s := newTestServer(t)
-	d := PageData{Langue: "fr", Theme: "clair", Version: "test"}
+	d := donneesTestCompletes()
 
 	attendus := fichiersGabarits(t, true)
 	if len(attendus) < 5 {
@@ -30,6 +33,120 @@ func TestGabaritsModulesEnregistres(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Errorf("rendu %s → code %d : %.120s", page, rec.Code, rec.Body.String())
 		}
+	}
+}
+
+// TestGabaritsExécutionSansErreur exécute chaque page (layout complet) et
+// chaque fragment (racine seule) avec des données riches. Contrairement à
+// rendre(), qui trace l'erreur d'exécution sur stderr, ce test échoue
+// explicitement : c'est lui qui attrape les bugs du type « tr .Langue dans un
+// range » (le dot y est l'élément de la liste, pas PageData).
+func TestGabaritsExécutionSansErreur(t *testing.T) {
+	s := newTestServer(t)
+	d := donneesTestCompletes()
+
+	for _, page := range fichiersGabarits(t, true) {
+		tmpl, ok := s.pages[page]
+		if !ok {
+			t.Errorf("page %s non enregistrée par New()", page)
+			continue
+		}
+		var buf bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&buf, "layout", d); err != nil {
+			t.Errorf("exécution page %s : %v", page, err)
+		}
+	}
+	for _, fragment := range fichiersGabarits(t, false) {
+		tmpl, ok := s.pages[fragment]
+		if !ok {
+			t.Errorf("fragment %s non enregistré par New()", fragment)
+			continue
+		}
+		racine := s.racines[fragment]
+		var buf bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&buf, racine, d); err != nil {
+			t.Errorf("exécution fragment %s (racine %s) : %v", fragment, racine, err)
+		}
+	}
+}
+
+// donneesTestCompletes construit un PageData rempli pour que chaque branche
+// conditionnelle et chaque {{range}} des gabarits s'exécute réellement.
+func donneesTestCompletes() PageData {
+	maintenant := time.Now().UTC().Format(time.RFC3339)
+	ligneExec := MigrationExecLine{
+		Prenom: "Léa", Nom: "Martin", Identifiant: "l.martin", NomComplet: "Martin Léa",
+		OUSource: "OU=Depot,DC=X", OUCible: "OU=Eleves,DC=X",
+		Statut: "succes", Detail: "Créé dans OU=Eleves", NouveauMDP: "Xk9$mDp",
+	}
+	return PageData{
+		Titre: "Test", Langue: "fr", Theme: "clair", Version: "test",
+		Connecte: true, LDAPFallback: true,
+		Utilisateur: "admin", Domaine: "EDUSYNC.LOCAL", Controleur: "SRV-AD1",
+		Erreurs:   []string{"erreur de test"},
+		NbActions: 1, StatutAD: "ok",
+		CheminConfig: "/tmp/config.json", CheminDonnees: "/tmp/journal.db",
+		Actions: []audit.Entry{{
+			ID: 1,
+			ActionLogEntry: models.ActionLogEntry{
+				Timestamp: maintenant, ActionType: "connexion", Compte: "admin",
+				Resultat: "succes", Detail: "Domaine EDUSYNC.LOCAL", Utilisateur: "admin",
+				Domaine: "EDUSYNC.LOCAL",
+			},
+		}},
+		Simulation: &SimulationResult{
+			Lignes: []SimulatedUserLine{{
+				Prenom: "Léa", Nom: "Martin", Identifiant: "l.martin", Mail: "lea.martin@x",
+				MotDePasse: "Xk9$mDp", OUCible: "OU=Eleves,DC=X", Groupe: "G-Eleves",
+				DoublonResolu: true,
+			}},
+			Valides: 1, Total: 1,
+		},
+		ForcerMdp: "on", SkipAd: "on",
+		Resultat: &ExecuteResult{Crees: 1, Lignes: []MigrationExecLine{ligneExec}},
+		SimulationPwd: &PasswordSimResult{
+			Lignes: []PasswordSimLine{{
+				Prenom: "Léa", Nom: "Martin", Identifiant: "l.martin",
+				Mail: "lea.martin@x", NouveauMDP: "Xk9$mDp", OUCible: "OU=Eleves,DC=X",
+			}},
+			Valides: 1, Total: 1,
+		},
+		ForceChange: true,
+		ResultatPwd: &PasswordExecResult{Crees: 1, Lignes: []MigrationExecLine{ligneExec}},
+		PlanMigration: &MigrationPlanResult{
+			Lignes: []MigrationPlanLine{{
+				Identifiant: "l.martin", NomComplet: "Martin Léa",
+				OUSource: "OU=Depot,DC=X", OUCible: "OU=Eleves,DC=X", Action: "move",
+			}},
+			Total: 1, WillMove: 1,
+		},
+		SimulationMigration: &MigrationSimResult{
+			Lignes: []MigrationSimLine{{
+				Identifiant: "l.martin", NomComplet: "Martin Léa",
+				OUSource: "OU=Depot,DC=X", OUCible: "OU=Eleves,DC=X", Action: "move",
+			}},
+			Total: 1, Valides: 1,
+		},
+		MigrationExecute: &MigrationExecResult{Crees: 1, Lignes: []MigrationExecLine{ligneExec}},
+		SearchResult: &ad.SearchResult{
+			Entries: []ad.SearchResultEntry{{
+				DN: "CN=Léa Martin,OU=Eleves,DC=X", ObjectType: "user",
+				DisplayName: "Martin Léa", SAMAccountName: "l.martin", Enabled: true,
+			}},
+			Cookie: "cookie-demo", Total: 1,
+		},
+		ExplorerTree: &ad.ExplorerNode{
+			DN: "DC=X", Name: "Racine", Type: "container", Expanded: true,
+			Children: []*ad.ExplorerNode{{
+				DN: "OU=Eleves,DC=X", Name: "Eleves", Type: "ou", HasChildren: true,
+				Children: []*ad.ExplorerNode{{DN: "CN=G1,OU=Groupes,DC=X", Name: "G1", Type: "group"}},
+			}},
+		},
+		ExplorerUser: &ad.User{
+			DN: "CN=Léa,DC=X", SAMAccountName: "l.martin", DisplayName: "Martin Léa", Enabled: true,
+		},
+		ExplorerGroup: &ad.Group{DN: "CN=G1,DC=X", CN: "G1", SAMAccountName: "G1"},
+		ExplorerOU:    &ad.OU{DN: "OU=Eleves,DC=X", Name: "Eleves", ParentDN: "DC=X"},
 	}
 }
 

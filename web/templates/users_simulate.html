@@ -56,7 +56,7 @@
               <input type="text" name="lignes[{{$idx}}].identifiant" value="{{$u.Identifiant}}"
                      class="w-full rounded border border-slate-300 px-2 py-1 text-sm font-mono dark:border-slate-700"
                      {{if $u.Erreur}}disabled{{end}}>
-              {{if $u.DoublonResolu}}<span class="text-xs text-amber-600">{{tr .Langue "users.doublon"}}</span>{{end}}
+              {{if $u.DoublonResolu}}<span class="text-xs text-amber-600">{{tr $.Langue "users.doublon"}}</span>{{end}}
             </td>
             <td class="px-4 py-2">
               <input type="text" name="lignes[{{$idx}}].mail" value="{{$u.Mail}}"
