@@ -303,6 +303,19 @@ var messages = map[string]map[string]string{
 		"updater.installation_lancee": "Installation lancée, l'application va redémarrer",
 		"updater.echec_preparation":   "Échec de la préparation de l'installation",
 
+		// Progression / annulation (A12)
+		"progress.titre":            "Suivi des opérations",
+		"progress.sous_titre":       "Suivre et annuler les opérations de masse en cours.",
+		"progress.operations":       "Opérations",
+		"progress.aucune_operation": "Aucune opération en cours.",
+		"progress.en_cours":         "En cours…",
+		"progress.termine":          "Terminée",
+		"progress.annulee":          "Annulée",
+		"progress.echec":            "Échec",
+		"progress.annuler":          "Annuler",
+		"progress.id_manquant":      "Identifiant d'opération manquant",
+		"progress.introuvable":      "Opération introuvable",
+
 		// Départs (M3)
 		"departs.titre":          "Gestion des départs",
 		"departs.sous_titre":     "Désactiver, archiver ou réactiver un compte utilisateur.",
@@ -656,6 +669,19 @@ var messages = map[string]map[string]string{
 		"updater.telechargement":      "Downloading…",
 		"updater.installation_lancee": "Installation started, the application will restart",
 		"updater.echec_preparation":   "Failed to prepare installation",
+
+		// Progression / annulation (A12)
+		"progress.titre":            "Operation tracking",
+		"progress.sous_titre":       "Track and cancel mass operations in progress.",
+		"progress.operations":       "Operations",
+		"progress.aucune_operation": "No operation in progress.",
+		"progress.en_cours":         "In progress…",
+		"progress.termine":          "Completed",
+		"progress.annulee":          "Cancelled",
+		"progress.echec":            "Failed",
+		"progress.annuler":          "Cancel",
+		"progress.id_manquant":      "Operation ID missing",
+		"progress.introuvable":      "Operation not found",
 
 		// Départs (M3)
 		"departs.titre":          "Departures",

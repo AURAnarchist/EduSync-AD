@@ -12,6 +12,7 @@ import (
 
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/config"
+	"github.com/estemobs/EduSync-AD/internal/progress"
 )
 
 func nouveauServeur(t *testing.T) (*Server, string) {
@@ -374,5 +375,77 @@ func TestFichiersDeConfigEcrites(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `"theme": "sombre"`) || !strings.Contains(string(raw), `"langue": "en"`) {
 		t.Errorf("préférences non enregistrées: %s", raw)
+	}
+}
+
+// ─── Progression (A12) ───────────────────────────────────────────────
+
+func TestProgressListVide(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/progress/list", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Aucune opération en cours") {
+		t.Errorf("devrait afficher aucune opération, body: %s", w.Body.String())
+	}
+}
+
+func TestProgressAnnuler(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	// Créer une opération directement via le tracker du serveur.
+	opID, _ := s.nouvelOperation("import")
+	s.majProgression(opID, 3, "traitement en cours")
+
+	// Annuler l'opération.
+	w := demander(t, s, "POST", "/app/progress/cancel", url.Values{"id": {opID}}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "annule") {
+		t.Errorf("devrait confirmer l'annulation, body: %s", w.Body.String())
+	}
+
+	// Vérifier que l'opération est bien annulée.
+	op := s.progress.Get(opID)
+	if op == nil || op.Statut != progress.StatutAnnule {
+		t.Errorf("statut = %q, attendu annule", op.Statut)
+	}
+}
+
+func TestProgressAnnulerIDInconnu(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/progress/cancel", url.Values{"id": {"op-inexistant"}}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusNotFound {
+		t.Errorf("code = %d, attendu 404", w.Code)
+	}
+}
+
+func TestProgressPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/progress", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Suivi des opérations") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+// TestProgressAnnulerSansSession vérifie que l'annulation est protégée par auth.
+func TestProgressAnnulerSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "POST", "/app/progress/cancel", url.Values{"id": {"op-1"}}, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
 }

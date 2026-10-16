@@ -727,7 +727,7 @@ Ajoute le support multisite (multi-domaine/forêt).
 9. **Lot A, A9** : ✅ fait — Paramètres (M8) : 3 onglets (comptes, mots de passe, apparence) + routes + gabarit `parametres.html` + i18n fr/en.
 10. **Lot A, A10** : ✅ fait — Mise à jour intégrée (M10) : `internal/updater` + routes UI + i18n fr/en.
 11. **Lot A, A11** : ✅ fait — CLI Core : `users import-simulate`, `password simulate`, `migration plan`, `export fields` (sortie JSON) + tests unitaires.
-12. **Lot A, A12** : progression/annulation (`context.Context`) sur les opérations de masse.
+12. **Lot A, A12** : ✅ fait — Progression/annulation : `internal/progress` (tracker thread-safe, contexte annulable par opération), routes `/app/progress`, `/app/progress/list`, `/app/progress/cancel`, gabarit `progress.html`, intégration dans `usersExecute` avec `context.Context`.
 13. **Lot A, A13** : revue parity §4.1.
 
 **Priorité 2 — releases :**

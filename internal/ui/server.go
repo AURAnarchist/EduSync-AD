@@ -33,6 +33,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/models"
+	"github.com/estemobs/EduSync-AD/internal/progress"
 	"github.com/estemobs/EduSync-AD/internal/updater"
 	"github.com/estemobs/EduSync-AD/web"
 )
@@ -136,6 +137,9 @@ type PageData struct {
 	// Export (M6)
 	ExportOU  string   // OU pré-remplie du formulaire
 	ExportOUs []*ad.OU // OU de premier niveau pour le datalist
+
+	// Progression (A12)
+	Operations []*progress.Operation // opérations de masse en cours
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -288,6 +292,7 @@ type Server struct {
 	mu       sync.Mutex
 	sessions map[string]*session
 	adPools  map[string]*ad.Pool // clé = sessionID
+	progress *progress.Tracker   // suivi des opérations de masse
 }
 
 // New prépare le serveur d'interface (templates, assets, journal).
@@ -389,6 +394,7 @@ func New(opts Options) (*Server, error) {
 		opts:     opts,
 		sessions: map[string]*session{},
 		adPools:  map[string]*ad.Pool{},
+		progress: progress.NewTracker(),
 	}
 	s.mux = s.routes()
 	return s, nil
@@ -456,6 +462,11 @@ func (s *Server) routes() *http.ServeMux {
 	// Mise à jour intégrée (M10)
 	mux.HandleFunc("GET /app/updater/check", s.requireAuth(s.pageUpdaterCheck))
 	mux.HandleFunc("POST /app/updater/install", s.requireAuth(s.pageUpdaterInstall))
+
+	// Progression / annulation des opérations de masse (A12)
+	mux.HandleFunc("GET /app/progress", s.requireAuthSession(s.pageProgress))
+	mux.HandleFunc("GET /app/progress/list", s.requireAuthSession(s.progressList))
+	mux.HandleFunc("POST /app/progress/cancel", s.requireAuthSession(s.progressCancel))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -1017,6 +1028,24 @@ func (s *Server) requireAuth(handler func(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// requireAuthSession vérifie seulement la session, sans exiger de pool AD.
+// Utile pour les routes qui n'ont pas besoin d'AD (progression, etc.).
+func (s *Server) requireAuthSession(handler func(w http.ResponseWriter, r *http.Request, sess *session)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sess := s.session(r)
+		if sess == nil {
+			if r.Header.Get("HX-Request") == "true" {
+				w.Header().Set("HX-Redirect", "/login")
+				w.WriteHeader(http.StatusOK)
+			} else {
+				http.Redirect(w, r, "/login", http.StatusSeeOther)
+			}
+			return
+		}
+		handler(w, r, sess)
+	}
+}
+
 // ─── Page Utilisateurs ─────────────────────────────────────────────────
 
 func (s *Server) pageUsers(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
@@ -1331,10 +1360,23 @@ func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *sess
 	forcerMdp := r.FormValue("forcer_mdp") == "1"
 	_ = r.FormValue("skip_ad") // lu pour compatibilité future
 
+	// Créer une opération de suivi avec contexte annulable (A12).
+	opID, opCtx := s.nouvelOperation("users")
+	total := len(sessionData.DerniereSimulation)
+
 	var resultLines []MigrationExecLine
 	crees, echecs := 0, 0
 
-	for _, gu := range sessionData.DerniereSimulation {
+	for i, gu := range sessionData.DerniereSimulation {
+		// Vérifier l'annulation avant chaque ligne (A12).
+		if progress.Annulable(opCtx) {
+			s.terminerOperation(opID, false, Tr(s.langue(r), "progress.annulee"), "")
+			s.rendre(w, http.StatusOK, "users_execute.html", s.donnees(r, Tr(s.langue(r), "users.execute_titre")))
+			return
+		}
+
+		s.majProgression(opID, i, fmt.Sprintf("%s %s", gu.Identifiant, gu.NomComplet()))
+
 		if gu.Erreur != "" {
 			// Ligne en erreur, ne pas tenter de créer
 			resultLines = append(resultLines, MigrationExecLine{
@@ -1364,7 +1406,7 @@ func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *sess
 		}
 
 		// Simulation AD (vérification finale)
-		simResult, err := pool.UserCreateSimulate(r.Context(), params)
+		simResult, err := pool.UserCreateSimulate(opCtx, params)
 		if err != nil || !simResult.WouldSucceed {
 			resultLines = append(resultLines, MigrationExecLine{
 				Prenom: gu.Source.Prenom, Nom: gu.Source.Nom, Identifiant: gu.Identifiant,
@@ -1375,7 +1417,7 @@ func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *sess
 		}
 
 		// Exécution réelle
-		createdUser, err := pool.UserCreate(r.Context(), params)
+		createdUser, err := pool.UserCreate(opCtx, params)
 		if err != nil {
 			resultLines = append(resultLines, MigrationExecLine{
 				Prenom: gu.Source.Prenom, Nom: gu.Source.Nom, Identifiant: gu.Identifiant,
@@ -1387,7 +1429,7 @@ func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *sess
 
 		// Forcer changement MDP si demandé
 		if forcerMdp {
-			_ = pool.UserResetPassword(r.Context(), createdUser.DN, gu.MotDePasse)
+			_ = pool.UserResetPassword(opCtx, createdUser.DN, gu.MotDePasse)
 		}
 
 		// Journaliser
@@ -1405,6 +1447,10 @@ func (s *Server) usersExecute(w http.ResponseWriter, r *http.Request, sess *sess
 		})
 		crees++
 	}
+
+	// Marquer l'opération comme terminée.
+	s.majProgression(opID, total, Tr(s.langue(r), "progress.termine"))
+	s.terminerOperation(opID, true, Tr(s.langue(r), "progress.termine"), "")
 
 	// Nettoyer la simulation
 	s.mu.Lock()
@@ -2671,6 +2717,67 @@ func (s *Server) pageUpdaterInstall(w http.ResponseWriter, r *http.Request, sess
 	}
 
 	_ = json.NewEncoder(w).Encode(map[string]string{"ok": Tr(s.langue(r), "updater.installation_lancee")})
+}
+
+// ─── Progression / annulation (A12) ───────────────────────────────────
+
+func (s *Server) pageProgress(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "progress.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "progress.html", d)
+}
+
+func (s *Server) progressList(w http.ResponseWriter, r *http.Request, sess *session) {
+	liste := s.progress.Liste()
+	if liste == nil {
+		liste = []*progress.Operation{}
+	}
+	d := s.donnees(r, "")
+	d.Operations = liste
+	s.rendreFragment(w, http.StatusOK, "progress_list.html", d)
+}
+
+func (s *Server) progressCancel(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	id := strings.TrimSpace(r.FormValue("id"))
+	if id == "" {
+		s.erreur(w, Tr(s.langue(r), "erreur.id_manquant"))
+		return
+	}
+
+	if s.progress.Annuler(id) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]string{"ok": "annule"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusNotFound)
+	_ = json.NewEncoder(w).Encode(map[string]string{"erreur": Tr(s.langue(r), "progress.introuvable")})
+}
+
+// nouvelOperation enregistre une opération de masse et retourne son ID
+// ainsi qu'un contexte annulable. Le serveur suit la progression via ce ID.
+func (s *Server) nouvelOperation(typeOp string) (string, context.Context) {
+	return s.progress.NouvelID(typeOp)
+}
+
+// majProgression met à jour la progression d'une opération. Retourne faux
+// si l'opération n'existe plus ou a été annulée.
+func (s *Server) majProgression(id string, actuel int, message string) bool {
+	return s.progress.MiseAJour(id, actuel, message)
+}
+
+// terminerOperation marque une opération comme terminée.
+func (s *Server) terminerOperation(id string, succes bool, message, erreur string) {
+	s.progress.Terminer(id, succes, message, erreur)
 }
 
 // ─── Rendu simulation utilisateurs ────────────────────────────────────
