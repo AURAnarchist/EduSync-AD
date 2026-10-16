@@ -316,7 +316,24 @@ var messages = map[string]map[string]string{
 		"progress.id_manquant":      "Identifiant d'opération manquant",
 		"progress.introuvable":      "Opération introuvable",
 
-		// Départs (M3)
+		// Profils utilisateurs (M13)
+		"profils.titre":            "Profils utilisateurs",
+		"profils.sous_titre":       "Configurer les profils itinérant, local ou obligatoire des comptes.",
+		"profils.action":           "Définir un profil",
+		"profils.user_dn":          "DN de l'utilisateur",
+		"profils.user_dn_aide":     "Exemple : CN=Jean Dupont,OU=Eleves,DC=EDUSYNC,DC=LOCAL",
+		"profils.type":             "Type de profil",
+		"profils.type_itinérant":   "Itinérant",
+		"profils.type_local":       "Local",
+		"profils.type_obligatoire": "Obligatoire",
+		"profils.chemin":           "Chemin du profil",
+		"profils.chemin_aide":      "Exemple : \\\\srv\\profil\\%USERNAME% — variables : %USERNAME%, %SAM%, %OU%",
+		"profils.resultat":         "Résultat",
+		"profils.utilisateur":      "Utilisateur",
+		"profils.chemin_resolu":    "Chemin résolu",
+		"profils.statut":           "Statut",
+		"profils.detail":           "Détail",
+
 		"departs.titre":          "Gestion des départs",
 		"departs.sous_titre":     "Désactiver, archiver ou réactiver un compte utilisateur.",
 		"departs.action":         "Action de départ",
@@ -682,6 +699,24 @@ var messages = map[string]map[string]string{
 		"progress.annuler":          "Cancel",
 		"progress.id_manquant":      "Operation ID missing",
 		"progress.introuvable":      "Operation not found",
+
+		// Profils utilisateurs (M13)
+		"profils.titre":            "User Profiles",
+		"profils.sous_titre":       "Configure roaming, local or mandatory profiles for accounts.",
+		"profils.action":           "Define profile",
+		"profils.user_dn":          "User DN",
+		"profils.user_dn_aide":     "e.g. CN=John Doe,OU=Students,DC=EDUSYNC,DC=LOCAL",
+		"profils.type":             "Profile type",
+		"profils.type_itinérant":   "Roaming",
+		"profils.type_local":       "Local",
+		"profils.type_obligatoire": "Mandatory",
+		"profils.chemin":           "Profile path",
+		"profils.chemin_aide":      "e.g. \\\\srv\\profiles\\%USERNAME% — variables: %USERNAME%, %SAM%, %OU%",
+		"profils.resultat":         "Result",
+		"profils.utilisateur":      "User",
+		"profils.chemin_resolu":    "Resolved path",
+		"profils.statut":           "Status",
+		"profils.detail":           "Detail",
 
 		// Départs (M3)
 		"departs.titre":          "Departures",

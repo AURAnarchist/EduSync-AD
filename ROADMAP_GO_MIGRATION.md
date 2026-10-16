@@ -262,7 +262,7 @@ edusync-ad/
 | Module | Fonctionnalités | Statut Go |
 |---|---|---|
 | **M12 — Photos d'identité** | Import manuel/masse/nommage auto, cadrage 3:4 ≤ 200 Ko, vignettes explorateur + étiquettes | ⬜ |
-| **M13 — Profils utilisateurs** | Itinérant/local/obligatoire par OU ou groupe, variables `%USERNAME%` `%SAM%` `%OU%` | ⬜ |
+| **M13 — Profils utilisateurs** | Itinérant/local/obligatoire par OU ou groupe, variables `%USERNAME%` `%SAM%` `%OU%` | ✅ Livré et testé (B1) |
 | **M14 — Quotas de disque (FSRM)** | Quota par OU/groupe, application auto, rapport CSV | ⬜ |
 | **M15 — Scripts logon/logoff** | Éditeur bat/powershell/vbs, variables, déploiement `scriptPath`/GPO | ⬜ |
 | **M16 — Heures de connexion** | Grille 24h × 7j, préréglages, attribut `logonHours` | ⬜ |
@@ -732,6 +732,10 @@ Ajoute le support multisite (multi-domaine/forêt).
 
 **Lot A terminé : le Core M1 → M11 est câblé de bout en bout.**
 **Étape suivante : tag `v0.1.0-alpha.1` → `release-go.yml` → Alpha 1 (Porte 1).**
+
+**Lot B — Premier module avancé (M13 → release v0.2.0) :**
+
+14. **Lot B, B1** : ✅ fait — M13 Profils utilisateurs : `internal/ad/profiles.go` (itinérant/local/obligatoire, variables %USERNAME%/%SAM%/%OU%), routes UI `/app/profils`, gabarit `profils.html`, CLI `profils simulate/execute`, i18n fr/en, tests unitaires.
 
 **Priorité 2 — releases :**
 

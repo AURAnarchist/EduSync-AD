@@ -65,6 +65,8 @@ Commandes :
   departs simulate        Simule un départ (sans écriture AD)
   departs pending list    Liste les suppressions planifiées
   departs pending purge   Purge les suppressions expirées
+  profils simulate        Simule l'application d'un profil utilisateur (JSON)
+  profils execute         Applique un profil utilisateur (JSON)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -107,6 +109,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdExport(args[1:], stdout, stderr)
 	case "departs":
 		return cmdDepart(args[1:], stdout, stderr)
+	case "profils":
+		return cmdProfils(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

@@ -468,6 +468,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /app/progress/list", s.requireAuthSession(s.progressList))
 	mux.HandleFunc("POST /app/progress/cancel", s.requireAuthSession(s.progressCancel))
 
+	// Profils utilisateurs (M13)
+	mux.HandleFunc("GET /app/profils", s.requireAuthSession(s.pageProfils))
+	mux.HandleFunc("POST /app/profils/simulate", s.requireAuthSession(s.profilsSimulate))
+	mux.HandleFunc("POST /app/profils/execute", s.requireAuthSession(s.profilsExecute))
+
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
 }
@@ -2761,6 +2766,122 @@ func (s *Server) progressCancel(w http.ResponseWriter, r *http.Request, sess *se
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusNotFound)
 	_ = json.NewEncoder(w).Encode(map[string]string{"erreur": Tr(s.langue(r), "progress.introuvable")})
+}
+
+// ─── Profils utilisateurs (M13) ──────────────────────────────────────
+
+func (s *Server) pageProfils(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "profils.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "profils.html", d)
+}
+
+func (s *Server) profilsSimulate(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	typ := ad.ProfileType(strings.TrimSpace(r.FormValue("type")))
+	chemin := strings.TrimSpace(r.FormValue("chemin"))
+
+	params := ad.ProfileParams{
+		UserDN: userDN,
+		Type:   typ,
+		Chemin: chemin,
+	}
+
+	// Récupérer le pool AD (peut être nil en dehors d'une session AD valide).
+	pool, err := s.getPool(sess)
+	if err != nil {
+		// Pas de connexion AD : retourner un résultat en attente.
+		s.profilsResultatFragment(w, langue, &ad.ProfileResult{
+			UserDN:        params.UserDN,
+			Type:          params.Type,
+			CheminResolve: params.Chemin,
+			Statut:        "attente_ad",
+			Detaille:      "connexion AD requise pour vérifier l'existence du compte",
+		})
+		return
+	}
+
+	result, err := pool.ProfileSimulate(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	s.profilsResultatFragment(w, langue, result)
+}
+
+func (s *Server) profilsExecute(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	typ := ad.ProfileType(strings.TrimSpace(r.FormValue("type")))
+	chemin := strings.TrimSpace(r.FormValue("chemin"))
+
+	params := ad.ProfileParams{
+		UserDN: userDN,
+		Type:   typ,
+		Chemin: chemin,
+	}
+
+	// Récupérer le pool AD (peut être nil en dehors d'une session AD valide).
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.profilsResultatFragment(w, langue, &ad.ProfileResult{
+			UserDN:        params.UserDN,
+			Type:          params.Type,
+			CheminResolve: params.Chemin,
+			Statut:        "attente_ad",
+			Detaille:      "connexion AD requise pour appliquer le profil",
+		})
+		return
+	}
+
+	result, err := pool.ProfileExecute(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	// Journaliser l'application du profil
+	if s.journal != nil {
+		entree := nouvelleEntree("profil_utilisateur", result.SAMAccountName, result.Statut,
+			fmt.Sprintf("Type: %s, chemin: %s", params.Type, result.CheminResolve))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+
+	s.profilsResultatFragment(w, langue, result)
+}
+
+// profilsResultatFragment rend le fragment HTML du résultat d'un profil.
+func (s *Server) profilsResultatFragment(w http.ResponseWriter, langue string, result *ad.ProfileResult) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "profils.resultat") + `</h2>`)
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "profils.utilisateur"), result.SAMAccountName))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "profils.type"), result.Type))
+	if result.CheminResolve != "" {
+		b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "profils.chemin"), result.CheminResolve))
+	}
+	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "profils.statut"), result.Statut))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "profils.detail"), result.Detaille))
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
 }
 
 // nouvelOperation enregistre une opération de masse et retourne son ID

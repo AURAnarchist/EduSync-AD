@@ -449,3 +449,66 @@ func TestProgressAnnulerSansSession(t *testing.T) {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
 }
+
+// ─── Profils (M13) ───────────────────────────────────────────────
+
+func TestProfilsPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/profils", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Profils utilisateurs") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestProfilsSimule(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/profils/simulate", url.Values{
+		"user_dn": {"CN=Jean Dupont,OU=Users,DC=X"},
+		"type":    {"itinérant"},
+		"chemin":  {"\\\\srv\\profil\\%USERNAME%"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "itinérant") {
+		t.Errorf("type absent, body: %s", w.Body.String())
+	}
+}
+
+func TestProfilsExecute(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/profils/execute", url.Values{
+		"user_dn": {"CN=Jean Dupont,OU=Users,DC=X"},
+		"type":    {"local"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "local") {
+		t.Errorf("type absent, body: %s", w.Body.String())
+	}
+}
+
+func TestProfilsSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/profils", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
