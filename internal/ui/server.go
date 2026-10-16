@@ -128,6 +128,10 @@ type PageData struct {
 	ExplorerUser  *ad.User
 	ExplorerGroup *ad.Group
 	ExplorerOU    *ad.OU
+
+	// Export (M6)
+	ExportOU  string   // OU pré-remplie du formulaire
+	ExportOUs []*ad.OU // OU de premier niveau pour le datalist
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -439,6 +443,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /app/export", s.requireAuth(s.pageExport))
 	mux.HandleFunc("POST /app/export/csv", s.requireAuth(s.exportCSV))
 	mux.HandleFunc("POST /app/export/pdf", s.requireAuth(s.exportPDF))
+	mux.HandleFunc("POST /app/export/trombinoscope", s.requireAuth(s.exportTrombinoscope))
 
 	// Audit / Journal
 	mux.HandleFunc("GET /app/audit", s.requireAuth(s.pageAudit))
@@ -2327,7 +2332,60 @@ func (s *Server) pageExport(w http.ResponseWriter, r *http.Request, sess *sessio
 	d.Utilisateur = sess.Utilisateur
 	d.Domaine = sess.Domaine
 	d.Controleur = sess.Controleur
+
+	// Pré-remplissage OU + liste de premier niveau pour le datalist
+	// (meilleure chance que la saisie libre, sans dépendre d'un arbre complet).
+	d.ExportOU = "OU=Eleves," + pool.BaseDN()
+	if ous, err := pool.OUSearch(r.Context(), pool.BaseDN(), ""); err == nil {
+		d.ExportOUs = ous
+	}
 	s.rendre(w, http.StatusOK, "export.html", d)
+}
+
+// champsExport convertit les valeurs de formulaire en champs d'export valides.
+// Le mot de passe et le QR code sont écartés ici : le premier n'est jamais
+// lisible depuis l'AD (attribut en écriture seule), le second n'a de sens que
+// dans un PDF (exportPDF l'ajoute explicitement).
+func champsExport(valeurs, defauts []string) []ad.ExportField {
+	permis := map[ad.ExportField]bool{}
+	for _, f := range ad.AllExportFields {
+		permis[f] = true
+	}
+	var out []ad.ExportField
+	for _, v := range valeurs {
+		f := ad.ExportField(v)
+		if permis[f] && f != ad.FieldPassword && f != ad.FieldQRCode {
+			out = append(out, f)
+		}
+	}
+	if len(out) == 0 {
+		for _, d := range defauts {
+			out = append(out, ad.ExportField(d))
+		}
+	}
+	return out
+}
+
+// chercheUsersExport charge les utilisateurs d'une OU (sous-OU incluses).
+func chercheUsersExport(r *http.Request, pool *ad.Pool, ou string) ([]*ad.User, error) {
+	return pool.UserSearch(r.Context(), ou,
+		"(&(objectClass=user)(objectCategory=person))",
+		[]string{"dn", "sAMAccountName", "displayName", "givenName", "sn", "mail",
+			"ou", "userPrincipalName", "description", "title", "department",
+			"employeeID", "telephoneNumber", "mobile"},
+		0)
+}
+
+// journaliseExport écrit une entrée de traçabilité pour un export généré.
+func (s *Server) journaliseExport(sess *session, action, ou string, nb, nbChamps int) {
+	if s.journal == nil {
+		return
+	}
+	entree := nouvelleEntree(action, sess.Utilisateur, "succes",
+		fmt.Sprintf("OU: %s, %d utilisateurs, %d champs", ou, nb, nbChamps))
+	entree.Utilisateur = sess.Utilisateur
+	entree.Domaine = sess.Domaine
+	_ = s.journal.Record(entree)
 }
 
 func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
@@ -2335,46 +2393,51 @@ func (s *Server) exportCSV(w http.ResponseWriter, r *http.Request, sess *session
 		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
 		return
 	}
+	langue := s.langue(r)
 
 	ou := strings.TrimSpace(r.FormValue("ou"))
-	champs := r.Form["champs"]
-	if len(champs) == 0 {
-		champs = []string{"sAMAccountName", "displayName", "mail"}
+	if ou == "" {
+		s.erreur(w, Tr(langue, "export.ou_requise"))
+		return
+	}
+	fields := champsExport(r.Form["champs"], []string{"sAMAccountName", "displayName", "mail"})
+
+	sep := ';'
+	switch r.FormValue("separateur") {
+	case ",":
+		sep = ','
+	case "tab":
+		sep = '\t'
 	}
 
-	var fields []ad.ExportField
-	for _, c := range champs {
-		fields = append(fields, ad.ExportField(c))
-	}
-
-	// Rechercher les utilisateurs dans l'OU demandée.
-	users, err := pool.UserSearch(r.Context(), ou,
-		"(&(objectClass=user)(objectCategory=person))",
-		[]string{"dn", "sAMAccountName", "displayName", "givenName", "sn", "mail", "ou", "userPrincipalName", "description"},
-		0)
+	users, err := chercheUsersExport(r, pool, ou)
 	if err != nil {
-		s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
 		return
 	}
 
 	params := ad.ExportParams{
 		Format:        ad.FormatCSV,
 		Fields:        fields,
-		IncludeHeader: true,
-		Separator:     ';',
+		IncludeHeader: r.FormValue("en_tete") != "",
+		Separator:     sep,
 		Users:         users,
 		Title:         "Export EduSync AD",
 	}
 
 	data, err := pool.ExportCSV(r.Context(), params)
 	if err != nil {
-		s.erreur(w, Tr(s.langue(r), "erreur.export")+": "+err.Error())
+		s.erreur(w, Tr(langue, "erreur.export")+": "+err.Error())
 		return
 	}
+	s.journaliseExport(sess, "export_csv", ou, len(users), len(fields))
 
+	nom := "export_" + time.Now().Format("20060102-1504") + ".csv"
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", "attachment; filename=export.csv")
-	w.Write(data)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+nom+`"`)
+	// BOM UTF-8 : Excel (Windows) ouvre alors les accents correctement.
+	_, _ = w.Write([]byte("\xEF\xBB\xBF"))
+	_, _ = w.Write(data)
 }
 
 func (s *Server) exportPDF(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
@@ -2382,28 +2445,22 @@ func (s *Server) exportPDF(w http.ResponseWriter, r *http.Request, sess *session
 		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
 		return
 	}
+	langue := s.langue(r)
 
 	ou := strings.TrimSpace(r.FormValue("ou"))
+	if ou == "" {
+		s.erreur(w, Tr(langue, "export.ou_requise"))
+		return
+	}
 	template := ad.LabelTemplate(r.FormValue("template"))
 	if template == "" {
 		template = ad.LabelL7160
 	}
-	champs := r.Form["champs"]
-	if len(champs) == 0 {
-		champs = []string{"displayName", "sAMAccountName", "mail", "ou"}
-	}
+	fields := champsExport(r.Form["champs"], []string{"displayName", "sAMAccountName", "mail", "ou"})
 
-	var fields []ad.ExportField
-	for _, c := range champs {
-		fields = append(fields, ad.ExportField(c))
-	}
-
-	users, err := pool.UserSearch(r.Context(), ou,
-		"(&(objectClass=user)(objectCategory=person))",
-		[]string{"dn", "sAMAccountName", "displayName", "givenName", "sn", "mail", "ou", "userPrincipalName", "description"},
-		0)
+	users, err := chercheUsersExport(r, pool, ou)
 	if err != nil {
-		s.erreur(w, Tr(s.langue(r), "erreur.connexion_ad")+": "+err.Error())
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
 		return
 	}
 
@@ -2412,18 +2469,76 @@ func (s *Server) exportPDF(w http.ResponseWriter, r *http.Request, sess *session
 		Template: template,
 		Fields:   fields,
 		Users:    users,
-		Title:    "Étiquettes EduSync AD",
+		Title:    Tr(langue, "export.pdf_titre"),
+	}
+	// QR code d'identifiant (optionnelle) : contenu = UPN, sinon SAM.
+	if r.FormValue("qrcode") != "" {
+		fields = append(fields, ad.FieldQRCode)
+		params.Fields = fields
+		params.QRCodeData = func(u *ad.User) string {
+			if u.UserPrincipalName != "" {
+				return u.UserPrincipalName
+			}
+			return u.SAMAccountName
+		}
 	}
 
 	data, err := pool.ExportLabelsPDF(r.Context(), params)
 	if err != nil {
-		s.erreur(w, Tr(s.langue(r), "erreur.export")+": "+err.Error())
+		s.erreur(w, Tr(langue, "erreur.export")+": "+err.Error())
+		return
+	}
+	s.journaliseExport(sess, "export_etiquettes", ou, len(users), len(fields))
+
+	nom := "etiquettes_" + time.Now().Format("20060102-1504") + ".pdf"
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+nom+`"`)
+	_, _ = w.Write(data)
+}
+
+// exportTrombinoscope génère un PDF trombinoscope (grille de photos+noms).
+func (s *Server) exportTrombinoscope(w http.ResponseWriter, r *http.Request, sess *session, pool *ad.Pool) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+
+	ou := strings.TrimSpace(r.FormValue("ou"))
+	if ou == "" {
+		s.erreur(w, Tr(langue, "export.ou_requise"))
+		return
+	}
+	titre := strings.TrimSpace(r.FormValue("titre"))
+	if titre == "" {
+		titre = "Trombinoscope"
+	}
+
+	users, err := chercheUsersExport(r, pool, ou)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
 		return
 	}
 
+	params := ad.ExportParams{
+		Format:         ad.FormatPDF,
+		Fields:         []ad.ExportField{ad.FieldDisplayName, ad.FieldSAMAccountName},
+		Users:          users,
+		Title:          titre,
+		PhotoAttribute: "thumbnailPhoto",
+	}
+
+	data, err := pool.ExportTrombinoscope(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.export")+": "+err.Error())
+		return
+	}
+	s.journaliseExport(sess, "export_trombinoscope", ou, len(users), len(params.Fields))
+
+	nom := "trombinoscope_" + time.Now().Format("20060102-1504") + ".pdf"
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", "attachment; filename=etiquettes.pdf")
-	w.Write(data)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+nom+`"`)
+	_, _ = w.Write(data)
 }
 
 // ─── Page Audit ────────────────────────────────────────────────────────

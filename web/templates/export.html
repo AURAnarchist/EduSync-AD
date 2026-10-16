@@ -1,59 +1,160 @@
 {{define "content"}}
-<div class="space-y-6">
+<div class="space-y-6" x-data="{ format: 'csv' }">
   <div>
     <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "export.titre"}}</h1>
     <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "export.sous_titre"}}</p>
   </div>
 
-  <!-- Formulaire d'export -->
-  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-    <h2 class="text-lg font-semibold">{{tr .Langue "export.format"}}</h2>
+  <!-- Formulaire d'export : POST natif (pas de HTMX) pour que le
+       navigateur télécharge réellement le fichier (Content-Disposition). -->
+  <form method="post" action="/app/export/csv" class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-6">
 
-    <form method="post" action="/app/export/csv"
-          hx-post="/app/export/csv" hx-target="#export-resultat" hx-swap="innerHTML"
-          class="mt-4 space-y-4">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label for="exp_ou" class="block text-sm font-medium">{{tr .Langue "users.col_ou"}}</label>
-          <input id="exp_ou" name="ou" type="text" placeholder="OU=Eleves,DC=EDUSYNC,DC=LOCAL"
-                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
-          <p class="mt-1 text-xs text-slate-500">DN de l'OU à exporter (sous-OU incluses)</p>
-        </div>
-        <div>
-          <label class="block text-sm font-medium">{{tr .Langue "export.champs"}}</label>
-          <div class="mt-1 grid grid-cols-2 gap-2">
-            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-              <input type="checkbox" name="champs" value="sAMAccountName" checked class="rounded-slate-500">
-              <span class="text-sm">Identifiant</span>
-            </label>
-            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-              <input type="checkbox" name="champs" value="displayName" checked class="rounded-slate-500">
-              <span class="text-sm">Nom complet</span>
-            </label>
-            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-              <input type="checkbox" name="champs" value="mail" class="rounded-slate-500">
-              <span class="text-sm">Email</span>
-            </label>
-            <label class="flex items-center gap-2 p-2 rounded border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-              <input type="checkbox" name="champs" value="ou" class="rounded-slate-500">
-              <span class="text-sm">OU</span>
-            </label>
-          </div>
+    <!-- OU source + format -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label for="exp_ou" class="block text-sm font-medium">{{tr .Langue "export.ou"}}</label>
+        <input id="exp_ou" name="ou" type="text" list="exp_ous" required value="{{.ExportOU}}"
+               placeholder="OU=Eleves,DC=EDUSYNC,DC=LOCAL"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        <datalist id="exp_ous">
+          {{range .ExportOUs}}<option value="{{.DN}}">{{end}}
+        </datalist>
+        <p class="mt-1 text-xs text-slate-500">{{tr .Langue "export.ou_aide"}}</p>
+      </div>
+      <div>
+        <label class="block text-sm font-medium">{{tr .Langue "export.format"}}</label>
+        <div class="mt-1 space-y-1">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="radio" name="format" value="csv" x-model="format" class="rounded-slate-500">
+            {{tr .Langue "export.format.csv"}}
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="radio" name="format" value="etiquettes" x-model="format" class="rounded-slate-500">
+            {{tr .Langue "export.format.etiquettes"}}
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="radio" name="format" value="trombinoscope" x-model="format" class="rounded-slate-500">
+            {{tr .Langue "export.format.trombinoscope"}}
+          </label>
         </div>
       </div>
+    </div>
 
-      <div class="flex gap-2">
-        <button type="submit"
-                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
-          {{tr .Langue "export.generer"}}
-        </button>
-        <a href="/app/export/pdf" class="rounded-md bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
-          PDF étiquettes
-        </a>
+    <!-- Champs exportés -->
+    <div>
+      <label class="block text-sm font-medium">{{tr .Langue "export.champs"}}</label>
+      <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="sAMAccountName" checked class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.identifiant"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="displayName" checked class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.nom_complet"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="givenName" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.prenom"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="sn" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.nom"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="mail" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.mail"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="ou" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.ou"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="userPrincipalName" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.upn"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="description" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.description"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="title" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.fonction"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="department" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.service"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="employeeID" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.matricule"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="telephoneNumber" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.telephone"}}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-800">
+          <input type="checkbox" name="champs" value="mobile" class="rounded-slate-500">
+          <span class="text-sm">{{tr .Langue "export.champ.mobile"}}</span>
+        </label>
       </div>
+    </div>
 
-      <div id="export-resultat" class="mt-4"></div>
-    </form>
-  </div>
+    <!-- Options CSV -->
+    <div x-show="format === 'csv'" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label for="exp_sep" class="block text-sm font-medium">{{tr .Langue "export.separateur"}}</label>
+        <select id="exp_sep" name="separateur"
+                class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <option value=";">{{tr .Langue "export.separateur.point_virgule"}}</option>
+          <option value=",">{{tr .Langue "export.separateur.virgule"}}</option>
+          <option value="tab">{{tr .Langue "export.separateur.tabulation"}}</option>
+        </select>
+      </div>
+      <div class="flex items-end pb-1">
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="en_tete" value="1" checked class="rounded-slate-500">
+          {{tr .Langue "export.en_tete"}}
+        </label>
+      </div>
+    </div>
+
+    <!-- Options étiquettes PDF -->
+    <div x-show="format === 'etiquettes'" x-cloak class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-medium">{{tr .Langue "export.modele"}}</label>
+        <div class="mt-1 space-y-1">
+          <label class="flex items-center gap-2 text-sm">
+            <input type="radio" name="template" value="L7160" checked class="rounded-slate-500">
+            {{tr .Langue "export.modele.l7160"}}
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="radio" name="template" value="L7163" class="rounded-slate-500">
+            {{tr .Langue "export.modele.l7163"}}
+          </label>
+        </div>
+      </div>
+      <div class="flex items-end pb-1">
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="qrcode" value="1" class="rounded-slate-500">
+          {{tr .Langue "export.qrcode"}}
+        </label>
+      </div>
+    </div>
+
+    <!-- Options trombinoscope -->
+    <div x-show="format === 'trombinoscope'" x-cloak>
+      <label for="exp_titre" class="block text-sm font-medium">{{tr .Langue "export.titre_trombinoscope"}}</label>
+      <input id="exp_titre" name="titre" type="text" placeholder="Trombinoscope 6e"
+             class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button type="submit"
+              :formaction="format === 'csv' ? '/app/export/csv' : format === 'etiquettes' ? '/app/export/pdf' : '/app/export/trombinoscope'"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "export.generer"}}
+      </button>
+    </div>
+  </form>
 </div>
 {{end}}
