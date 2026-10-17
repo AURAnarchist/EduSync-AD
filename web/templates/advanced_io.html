@@ -1,0 +1,97 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "advio.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "advio.sous_titre"}}</p>
+  </div>
+
+  <!-- 1. Validation d'un filtre LDAP -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "advio.filtre_titre"}}</h2>
+    <form method="post" action="/app/advanced-io/validate-filter"
+          hx-post="/app/advanced-io/validate-filter" hx-target="#ai-filter-result" hx-swap="innerHTML"
+          class="mt-4 flex flex-wrap gap-3">
+      <input name="filtre" type="text" placeholder="(&(objectClass=user)(objectCategory=person))"
+             class="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "advio.valider"}}
+      </button>
+    </form>
+    <div id="ai-filter-result" class="mt-4"></div>
+  </div>
+
+  <!-- 2. Source d'import -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "advio.source_titre"}}</h2>
+    <form method="post" action="/app/advanced-io/source"
+          hx-post="/app/advanced-io/source" hx-target="#ai-source-result" hx-swap="innerHTML"
+          class="mt-4 grid gap-3 sm:grid-cols-2">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "advio.mode"}}</span>
+        <select name="mode" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <option value="ou">{{tr .Langue "advio.mode_ou"}}</option>
+          <option value="groupe">{{tr .Langue "advio.mode_groupe"}}</option>
+          <option value="filtre">{{tr .Langue "advio.mode_filtre"}}</option>
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "advio.ou"}}</span>
+        <input name="ou_dn" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "advio.groupe"}}</span>
+        <input name="group_dn" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "advio.base"}}</span>
+        <input name="base_dn" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm sm:col-span-2">
+        <span class="text-slate-500">{{tr .Langue "advio.filtre"}}</span>
+        <input name="filtre" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <div class="flex gap-3 sm:col-span-2">
+        <button type="submit" formaction="/app/advanced-io/source" hx-post="/app/advanced-io/source" hx-target="#ai-source-result"
+                class="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-700">
+          {{tr .Langue "advio.verifier"}}
+        </button>
+        <button type="submit" formaction="/app/advanced-io/import" hx-post="/app/advanced-io/import" hx-target="#ai-source-result"
+                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "advio.importer"}}
+        </button>
+      </div>
+    </form>
+    <div id="ai-source-result" class="mt-4"></div>
+  </div>
+
+  <!-- 3. Mapping GEP -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "advio.gep_titre"}}</h2>
+    <form method="post" action="/app/advanced-io/gep-mapping"
+          hx-post="/app/advanced-io/gep-mapping" hx-target="#ai-gep-result" hx-swap="innerHTML"
+          class="mt-4 flex flex-wrap gap-3">
+      <input name="headers" type="text" placeholder="{{tr .Langue "advio.headers_placeholder"}}"
+             class="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "advio.mapper"}}
+      </button>
+    </form>
+    <div id="ai-gep-result" class="mt-4"></div>
+  </div>
+
+  <!-- 4. Outil tiers GEP -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "advio.config_titre"}}</h2>
+    <form method="post" action="/app/advanced-io/config"
+          hx-post="/app/advanced-io/config" hx-target="#ai-config-result" hx-swap="innerHTML"
+          class="mt-4 flex flex-wrap gap-3">
+      <input name="gep_tool_path" type="text" value="{{.ConfigAdvIO.CheminOutilGEP}}" placeholder="/chemin/vers/outil-gep"
+             class="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "advio.enregistrer"}}
+      </button>
+    </form>
+    <div id="ai-config-result" class="mt-4"></div>
+  </div>
+</div>
+{{end}}

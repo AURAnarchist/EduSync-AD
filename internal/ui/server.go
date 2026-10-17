@@ -152,6 +152,9 @@ type PageData struct {
 	CacheADPerime      bool
 	ResultatCacheOUs   []ad.CacheOU
 	ResultatCacheUsers []ad.CacheUser
+
+	// Import/Export avancés (M22)
+	ConfigAdvIO ad.ConfigAdvIO
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -523,6 +526,14 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/ad-cache/sync", s.requireAuthSession(s.adCacheSync))
 	mux.HandleFunc("POST /app/ad-cache/search", s.requireAuthSession(s.adCacheSearch))
 	mux.HandleFunc("POST /app/ad-cache/ous", s.requireAuthSession(s.adCacheOUs))
+
+	// Import/Export avancés (M22)
+	mux.HandleFunc("GET /app/advanced-io", s.requireAuthSession(s.pageAdvancedIO))
+	mux.HandleFunc("POST /app/advanced-io/validate-filter", s.requireAuthSession(s.advioValidateFilter))
+	mux.HandleFunc("POST /app/advanced-io/source", s.requireAuthSession(s.advioSource))
+	mux.HandleFunc("POST /app/advanced-io/import", s.requireAuthSession(s.advioImport))
+	mux.HandleFunc("POST /app/advanced-io/gep-mapping", s.requireAuthSession(s.advioGEPMapping))
+	mux.HandleFunc("POST /app/advanced-io/config", s.requireAuthSession(s.advioConfig))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -4013,6 +4024,215 @@ func (s *Server) adCacheOUsFragment(w http.ResponseWriter, langue string, ous []
 		b.WriteString(`</ul>`)
 	}
 	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Import/Export avancés (M22) ──────────────────────────────────────────
+
+func (s *Server) pageAdvancedIO(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "advio.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	if dir, err := ad.DossierConfigAdvIO(); err == nil {
+		d.ConfigAdvIO = ad.ChargerConfigAdvIO(dir)
+	}
+	s.rendre(w, http.StatusOK, "advanced_io.html", d)
+}
+
+// advioSourceDepuisForm construit une source LDAP depuis le formulaire.
+func advioSourceDepuisForm(r *http.Request) ad.SourceLDAP {
+	mode := r.FormValue("mode")
+	if mode == "" {
+		mode = ad.SourceLDAPOU
+	}
+	filtre := strings.TrimSpace(r.FormValue("filtre"))
+	if filtre == "" {
+		filtre = ad.FiltreUtilisateurs
+	}
+	return ad.SourceLDAP{
+		Mode:      mode,
+		OUDN:      strings.TrimSpace(r.FormValue("ou_dn")),
+		GroupDN:   strings.TrimSpace(r.FormValue("group_dn")),
+		Filtre:    filtre,
+		BaseDN:    strings.TrimSpace(r.FormValue("base_dn")),
+		Attributs: append([]string(nil), ad.AttributsExportDefaut...),
+		Limite:    5000,
+	}
+}
+
+func (s *Server) advioValidateFilter(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	filtre := strings.TrimSpace(r.FormValue("filtre"))
+	s.advioFiltreFragment(w, langue, filtre, ad.ValiderFiltreLDAP(filtre))
+}
+
+func (s *Server) advioSource(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	source := advioSourceDepuisForm(r)
+	base, filtre := source.RequeteLDAP()
+	s.advioSourceFragment(w, langue, base, filtre, source.Validate())
+}
+
+func (s *Server) advioImport(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	source := advioSourceDepuisForm(r)
+	if erreurs := source.Validate(); len(erreurs) > 0 {
+		s.advioMessage(w, langue, strings.Join(erreurs, " "), true)
+		return
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.advioMessage(w, langue, Tr(langue, "advio.attente_ad"), true)
+		return
+	}
+	entrees, err := pool.ImporterDepuisAD(r.Context(), source)
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	if s.journal != nil {
+		entree := nouvelleEntree("adv_io_import", source.Mode, "succes",
+			fmt.Sprintf("Import %s : %d entrée(s)", source.Mode, len(entrees)))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+	s.advioImportFragment(w, langue, entrees)
+}
+
+func (s *Server) advioGEPMapping(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	var headers []string
+	for _, h := range strings.Split(r.FormValue("headers"), ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			headers = append(headers, h)
+		}
+	}
+	s.advioMappingFragment(w, langue, ad.SuggererMappingGEP(headers))
+}
+
+func (s *Server) advioConfig(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	dir, err := ad.DossierConfigAdvIO()
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	cfg := ad.ConfigAdvIO{CheminOutilGEP: strings.TrimSpace(r.FormValue("gep_tool_path"))}
+	if err := ad.EnregistrerConfigAdvIO(dir, cfg); err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	s.advioMessage(w, langue, Tr(langue, "advio.config_enregistree"), false)
+}
+
+// advioMessage rend un message simple.
+func (s *Server) advioMessage(w http.ResponseWriter, langue, message string, erreur bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	classe := "text-emerald-600 dark:text-emerald-400"
+	if erreur {
+		classe = "text-rose-600 dark:text-rose-400"
+	}
+	fmt.Fprintf(w, `<p class="text-sm %s">%s</p>`, classe, html.EscapeString(message))
+}
+
+// advioFiltreFragment rend le résultat de la validation d'un filtre.
+func (s *Server) advioFiltreFragment(w http.ResponseWriter, langue, filtre string, erreurs []string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-lg border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<p class="font-mono break-all text-xs text-slate-500">` + html.EscapeString(filtre) + `</p>`)
+	if len(erreurs) == 0 {
+		b.WriteString(`<p class="mt-2 text-emerald-600 dark:text-emerald-400">` + Tr(langue, "advio.filtre_valide") + `</p>`)
+	} else {
+		b.WriteString(`<ul class="mt-2 list-disc pl-5 text-rose-600 dark:text-rose-400">`)
+		for _, e := range erreurs {
+			b.WriteString(`<li>` + html.EscapeString(e) + `</li>`)
+		}
+		b.WriteString(`</ul>`)
+	}
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// advioSourceFragment rend la requête LDAP construite et sa validation.
+func (s *Server) advioSourceFragment(w http.ResponseWriter, langue, base, filtre string, erreurs []string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-lg border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(fmt.Sprintf(`<p><strong>%s :</strong> <span class="font-mono break-all">%s</span></p>`, Tr(langue, "advio.base"), html.EscapeString(base)))
+	b.WriteString(fmt.Sprintf(`<p><strong>%s :</strong> <span class="font-mono break-all">%s</span></p>`, Tr(langue, "advio.filtre"), html.EscapeString(filtre)))
+	if len(erreurs) == 0 {
+		b.WriteString(`<p class="mt-2 text-emerald-600 dark:text-emerald-400">` + Tr(langue, "advio.source_valide") + `</p>`)
+	} else {
+		b.WriteString(`<ul class="mt-2 list-disc pl-5 text-rose-600 dark:text-rose-400">`)
+		for _, e := range erreurs {
+			b.WriteString(`<li>` + html.EscapeString(e) + `</li>`)
+		}
+		b.WriteString(`</ul>`)
+	}
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// advioImportFragment rend un aperçu (limité) des entrées importées.
+func (s *Server) advioImportFragment(w http.ResponseWriter, langue string, entrees []ad.EntreeLDAP) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	const maxAffiche = 50
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-lg border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(fmt.Sprintf(`<p class="font-semibold">%d %s</p>`, len(entrees), Tr(langue, "advio.entrees")))
+	if len(entrees) == 0 {
+		b.WriteString(`<p class="text-slate-500">` + Tr(langue, "advio.aucun") + `</p></div>`)
+		w.Write([]byte(b.String()))
+		return
+	}
+	b.WriteString(`<ul class="mt-2 space-y-1 font-mono text-xs">`)
+	for i, e := range entrees {
+		if i >= maxAffiche {
+			b.WriteString(fmt.Sprintf(`<li class="text-slate-500">… (+%d)</li>`, len(entrees)-maxAffiche))
+			break
+		}
+		b.WriteString(`<li>` + html.EscapeString(fmt.Sprintf("%v", e["dn"])) + `</li>`)
+	}
+	b.WriteString(`</ul></div>`)
+	w.Write([]byte(b.String()))
+}
+
+// advioMappingFragment rend l'association automatique des colonnes GEP.
+func (s *Server) advioMappingFragment(w http.ResponseWriter, langue string, mapping map[string]string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-lg border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<table class="w-full text-sm"><tbody>`)
+	for _, col := range ad.ColonnesImportEduSync {
+		b.WriteString(fmt.Sprintf(`<tr><td class="py-1 pr-4 text-slate-500">%s</td><td class="py-1 font-mono">%s</td></tr>`,
+			html.EscapeString(col), html.EscapeString(mapping[col])))
+	}
+	b.WriteString(`</tbody></table></div>`)
 	w.Write([]byte(b.String()))
 }
 

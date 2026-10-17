@@ -271,7 +271,7 @@ edusync-ad/
 | **M19 — Microsoft 365 / Entra ID** | App registration, users cloud + licences, groupes/Teams, photos | ⬜ |
 | **M20 — Exchange** | Boîtes aux lettres, aliases/proxy, policies, quotas | ⬜ |
 | **M21 — RDS / Bureau à distance** | Collections, RemoteApp, UPD/FSLogix | ⬜ |
-| **M22 — Import/Export avancés** | Import LDAP (OU/filtre), export LDIF/vCard, publipostage HTML, import GEP | ⬜ |
+| **M22 — Import/Export avancés** | Import LDAP (OU/filtre), export LDIF/vCard, publipostage HTML, import GEP | ✅ Livré et testé (B9) — `internal/ad/advanced_io.go` : import LDAP (OU/groupe/filtre validé), export CSV/LDIF (RFC 2849, base64+pliage)/vCard 3.0, publipostage HTML + index, import GEP (mapping auto + conversion), outil tiers |
 | **M23 — Modèles de groupes** | Modèles classe/personnel/services, instanciation 1-clic, duplication/import | ⬜ |
 | **M24 — Étiquettes avancées (Label Studio)** | Éditeur WYSIWYG, badges/cartes, trombinoscope photo A4/A3, envoi par mail | ⬜ |
 
@@ -743,6 +743,7 @@ Ajoute le support multisite (multi-domaine/forêt).
 19. **Lot B, B6** : ✅ fait — M12 Photos d'identité : `internal/ad/photos.go` (attributs thumbnailPhoto/jpegPhoto, lecture du fichier disque, recadrage 3:4 centré + redimensionnement + ré-encodage JPEG, limite 200 Ko, import en masse `<sAMAccountName>.jpg`), routes UI `/app/photos`, gabarit `photos.html`, CLI `photos simulate/execute`, i18n fr/en, tests unitaires.
 20. **Lot B, B7** : ✅ fait — M18 Espaces partagés par classe : `internal/classspaces/classspaces.go` (configuration partagée `\\srv\classes\%GROUP%`, classement profs/élèves par groupe ou OU, plan + diff de synchronisation, génération des scripts PowerShell création/partage SMB + droits NTFS et synchro membres AD ↔ droits, persistance `class_spaces.json`/`class_spaces_state.json` au format Python, hook `NotifierCreationGroupe`), routes UI `/app/class-spaces` (+ config/plan/creation-script/sync-script), gabarit `class_spaces.html`, CLI `class-spaces plan/creation-script/sync-script/notify/config`, i18n fr/en, tests unitaires.
 21. **Lot B, B8** : ✅ fait — T2 Cache AD SQLite : `internal/ad/cache.go` (schéma identique à Python `ad_cache.sqlite`, sync complète + incrémentale `uSNChanged`, TTL, méta `last_sync`/`last_usn_changed`, requêtes OUs/groupes/utilisateurs/recherche, intégration `GetSubTree`), routes UI `/app/ad-cache` (+ sync/search/ous), gabarit `ad_cache.html`, CLI `ad-cache stats/ous/groups/users/search/sync`, i18n fr/en, tests unitaires.
+22. **Lot B, B9** : ✅ fait — M22 Import/Export avancés : `internal/ad/advanced_io.go` (import LDAP depuis OU/groupe/filtre avec validation de filtre, export CSV/LDIF RFC 2849/vCard 3.0, publipostage HTML + index, import GEP avec association automatique des colonnes et conversion au format d'import EduSync, configuration + lancement de l'outil tiers), routes UI `/app/advanced-io` (+ validate-filter/source/import/gep-mapping/config), gabarit `advanced_io.html`, CLI `advanced-io validate-filter/source/import/export/merge-html/gep/config/run-tool`, i18n fr/en, tests unitaires.
 
 **Priorité 2 — releases :**
 

@@ -88,6 +88,14 @@ Commandes :
   ad-cache users           Liste les utilisateurs d'une OU (cache)
   ad-cache search          Recherche des utilisateurs dans le cache
   ad-cache sync            Synchronise le cache (AD requis)
+  advanced-io validate-filter  Valide un filtre LDAP
+  advanced-io source       Construit/valide une source LDAP d'import
+  advanced-io import       Importe depuis AD (AD requis)
+  advanced-io export       Exporte en CSV/LDIF/vCard
+  advanced-io merge-html   Publipostage HTML (un fichier par objet)
+  advanced-io gep          Import GEP (mapping, parse, conversion)
+  advanced-io config       Configure l'outil tiers GEP
+  advanced-io run-tool     Lance l'outil tiers GEP
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -146,6 +154,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdClassSpaces(args[1:], stdout, stderr)
 	case "ad-cache":
 		return cmdADCache(args[1:], stdout, stderr)
+	case "advanced-io":
+		return cmdAdvancedIO(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

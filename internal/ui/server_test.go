@@ -1012,3 +1012,95 @@ func TestADCacheSansSession(t *testing.T) {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
 }
+
+// ─── Import/Export avancés (M22) ─────────────────────────────────────────
+
+func TestAdvancedIOPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/advanced-io", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Import / Export avancés") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestAdvancedIOValidateFilter(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/advanced-io/validate-filter", url.Values{"filtre": {"(&(objectClass=user))"}},
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Filtre valide") {
+		t.Errorf("filtre valide attendu, body: %s", w.Body.String())
+	}
+
+	w = demander(t, s, "POST", "/app/advanced-io/validate-filter", url.Values{"filtre": {"objectClass=user"}},
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if !strings.Contains(w.Body.String(), "parenthèses") {
+		t.Errorf("message d'erreur attendu, body: %s", w.Body.String())
+	}
+}
+
+func TestAdvancedIOSource(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/advanced-io/source", url.Values{
+		"mode":  {"ou"},
+		"ou_dn": {"OU=Eleves,DC=lycee,DC=local"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	if !strings.Contains(corps, "OU=Eleves,DC=lycee,DC=local") || !strings.Contains(corps, "Source valide") {
+		t.Errorf("source attendue, body: %s", corps)
+	}
+}
+
+func TestAdvancedIOImportSansAd(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/advanced-io/import", url.Values{
+		"mode":  {"ou"},
+		"ou_dn": {"OU=Eleves,DC=lycee,DC=local"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Connexion AD requise") {
+		t.Errorf("message attente_ad attendu, body: %s", w.Body.String())
+	}
+}
+
+func TestAdvancedIOGEPMapping(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/advanced-io/gep-mapping", url.Values{"headers": {"NOM,PRENOM,CLASSE"}},
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	if !strings.Contains(corps, "NOM") || !strings.Contains(corps, "PRENOM") {
+		t.Errorf("mapping attendu, body: %s", corps)
+	}
+}
+
+func TestAdvancedIOSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/advanced-io", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
