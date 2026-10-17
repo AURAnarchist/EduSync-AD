@@ -1,0 +1,156 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "classspaces.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "classspaces.sous_titre"}}</p>
+  </div>
+
+  <!-- 1. Configuration -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "classspaces.config_titre"}}</h2>
+
+    <form method="post" action="/app/class-spaces/config"
+          hx-post="/app/class-spaces/config" hx-target="#cs-config-result" hx-swap="innerHTML"
+          class="mt-4 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label for="cs_root" class="block text-sm font-medium">{{tr .Langue "classspaces.partage_racine"}}</label>
+          <input id="cs_root" name="share_root" type="text" value="{{.ConfigClassSpaces.PartageRacine}}" placeholder="\\srv\classes"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <p class="mt-1 text-xs text-slate-500">{{tr .Langue "classspaces.partage_racine_aide"}}</p>
+        </div>
+        <div>
+          <label for="cs_modele" class="block text-sm font-medium">{{tr .Langue "classspaces.modele_dossier"}}</label>
+          <input id="cs_modele" name="modele_dossier" type="text" value="{{.ConfigClassSpaces.ModeleDossier}}" placeholder="%GROUP%"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <p class="mt-1 text-xs text-slate-500">{{tr .Langue "classspaces.modele_dossier_aide"}}</p>
+        </div>
+        <div>
+          <label for="cs_profs_group" class="block text-sm font-medium">{{tr .Langue "classspaces.groupe_profs"}}</label>
+          <input id="cs_profs_group" name="teachers_group" type="text" value="{{.ConfigClassSpaces.GroupeProfs}}" placeholder="CN=Profs,DC=..."
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+        <div>
+          <label for="cs_profs_ou" class="block text-sm font-medium">{{tr .Langue "classspaces.ou_profs"}}</label>
+          <input id="cs_profs_ou" name="teachers_ou" type="text" value="{{.ConfigClassSpaces.OUProfs}}" placeholder="OU=Profs,DC=..."
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="auto_creation" value="1" {{if .ConfigClassSpaces.AutoSurCreation}}checked{{end}}
+               class="rounded border-slate-300 dark:border-slate-700">
+        {{tr .Langue "classspaces.auto_creation"}}
+      </label>
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "classspaces.enregistrer_config"}}
+      </button>
+    </form>
+    <div id="cs-config-result" class="mt-3"></div>
+  </div>
+
+  <!-- 2. Plan de l'espace -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "classspaces.plan_titre"}}</h2>
+
+    <form method="post" action="/app/class-spaces/plan"
+          hx-post="/app/class-spaces/plan" hx-target="#cs-plan-result" hx-swap="innerHTML"
+          class="mt-4 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label for="cs_plan_dn" class="block text-sm font-medium">{{tr .Langue "classspaces.group_dn"}}</label>
+          <input id="cs_plan_dn" name="group_dn" type="text" placeholder="CN=6emeA,OU=Classes,DC=..."
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+        <div>
+          <label for="cs_plan_name" class="block text-sm font-medium">{{tr .Langue "classspaces.group_name"}}</label>
+          <input id="cs_plan_name" name="group_name" type="text" placeholder="6emeA"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+      </div>
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "classspaces.apercu"}}
+      </button>
+    </form>
+    <div id="cs-plan-result" class="mt-4"></div>
+  </div>
+
+  <!-- 3. Scripts -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "classspaces.scripts_titre"}}</h2>
+
+    <form method="post" action="/app/class-spaces/creation-script"
+          hx-post="/app/class-spaces/creation-script" hx-target="#cs-creation-result" hx-swap="innerHTML"
+          class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+      <div>
+        <label for="cs_create_dn" class="block text-sm font-medium">{{tr .Langue "classspaces.group_dn"}}</label>
+        <input id="cs_create_dn" name="group_dn" type="text"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </div>
+      <div>
+        <label for="cs_create_name" class="block text-sm font-medium">{{tr .Langue "classspaces.group_name"}}</label>
+        <input id="cs_create_name" name="group_name" type="text" placeholder="6emeA"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </div>
+      <div>
+        <button type="submit"
+                class="w-full rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500">
+          {{tr .Langue "classspaces.creation_script"}}
+        </button>
+      </div>
+    </form>
+    <div id="cs-creation-result" class="mt-4"></div>
+
+    <form method="post" action="/app/class-spaces/sync-script"
+          hx-post="/app/class-spaces/sync-script" hx-target="#cs-sync-result" hx-swap="innerHTML"
+          class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+      <div>
+        <label for="cs_sync_dn" class="block text-sm font-medium">{{tr .Langue "classspaces.group_dn"}}</label>
+        <input id="cs_sync_dn" name="group_dn" type="text"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </div>
+      <div>
+        <label for="cs_sync_name" class="block text-sm font-medium">{{tr .Langue "classspaces.group_name"}}</label>
+        <input id="cs_sync_name" name="group_name" type="text" placeholder="6emeA"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </div>
+      <div>
+        <button type="submit"
+                class="w-full rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500">
+          {{tr .Langue "classspaces.sync_script"}}
+        </button>
+      </div>
+      <div class="md:col-span-3">
+        <label for="cs_sync_chemin" class="block text-sm font-medium">{{tr .Langue "classspaces.chemin"}}</label>
+        <input id="cs_sync_chemin" name="chemin" type="text" placeholder="\\srv\classes\6emeA"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        <p class="mt-1 text-xs text-slate-500">{{tr .Langue "classspaces.chemin_aide"}}</p>
+      </div>
+    </form>
+    <div id="cs-sync-result" class="mt-4"></div>
+
+    <form method="post" action="/app/class-spaces/mark-synced"
+          hx-post="/app/class-spaces/mark-synced" hx-target="#cs-mark-result" hx-swap="innerHTML"
+          class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+      <div>
+        <label for="cs_mark_dn" class="block text-sm font-medium">{{tr .Langue "classspaces.group_dn"}}</label>
+        <input id="cs_mark_dn" name="group_dn" type="text"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </div>
+      <div>
+        <label for="cs_mark_name" class="block text-sm font-medium">{{tr .Langue "classspaces.group_name"}}</label>
+        <input id="cs_mark_name" name="group_name" type="text" placeholder="6emeA"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </div>
+      <div>
+        <button type="submit"
+                class="w-full rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600">
+          {{tr .Langue "classspaces.marquer_sync"}}
+        </button>
+      </div>
+    </form>
+    <div id="cs-mark-result" class="mt-4"></div>
+  </div>
+</div>
+{{end}}

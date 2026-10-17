@@ -18,6 +18,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"html"
 	"html/template"
 	"io/fs"
 	"net/http"
@@ -31,6 +32,7 @@ import (
 
 	"github.com/estemobs/EduSync-AD/internal/ad"
 	"github.com/estemobs/EduSync-AD/internal/audit"
+	"github.com/estemobs/EduSync-AD/internal/classspaces"
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/models"
 	"github.com/estemobs/EduSync-AD/internal/progress"
@@ -140,6 +142,9 @@ type PageData struct {
 
 	// Progression (A12)
 	Operations []*progress.Operation // opérations de masse en cours
+
+	// Espaces de classe (M18)
+	ConfigClassSpaces classspaces.Config
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -497,6 +502,14 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /app/photos", s.requireAuthSession(s.pagePhotos))
 	mux.HandleFunc("POST /app/photos/simulate", s.requireAuthSession(s.photosSimulate))
 	mux.HandleFunc("POST /app/photos/execute", s.requireAuthSession(s.photosExecute))
+
+	// Espaces partages par classe (M18)
+	mux.HandleFunc("GET /app/class-spaces", s.requireAuthSession(s.pageClassSpaces))
+	mux.HandleFunc("POST /app/class-spaces/config", s.requireAuthSession(s.classSpacesConfig))
+	mux.HandleFunc("POST /app/class-spaces/plan", s.requireAuthSession(s.classSpacesPlan))
+	mux.HandleFunc("POST /app/class-spaces/creation-script", s.requireAuthSession(s.classSpacesCreationScript))
+	mux.HandleFunc("POST /app/class-spaces/sync-script", s.requireAuthSession(s.classSpacesSyncScript))
+	mux.HandleFunc("POST /app/class-spaces/mark-synced", s.requireAuthSession(s.classSpacesMarkSynced))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -3541,6 +3554,254 @@ func (s *Server) photosResultatFragment(w http.ResponseWriter, langue string, re
 	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "photos.statut"), result.Statut))
 	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "photos.detail"), result.Detaille))
 	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Espaces partagés par classe (M18) ────────────────────────────────────
+
+// dossierClassSpaces retourne le dossier de configuration des espaces : à côté
+// de config.json (cohérent en test et avec Python), sinon dossier utilisateur.
+func (s *Server) dossierClassSpaces() string {
+	if s.opts.ConfigPath != "" {
+		return filepath.Dir(s.opts.ConfigPath)
+	}
+	if dir, err := classspaces.DossierConfig(); err == nil && dir != "" {
+		return dir
+	}
+	return "."
+}
+
+func (s *Server) pageClassSpaces(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "classspaces.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	d.ConfigClassSpaces = classspaces.ChargerConfig(s.dossierClassSpaces())
+	s.rendre(w, http.StatusOK, "class_spaces.html", d)
+}
+
+// classSpacesConfig enregistre la configuration des espaces de classe.
+func (s *Server) classSpacesConfig(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	cfg := classspaces.Config{
+		PartageRacine:   strings.TrimSpace(r.FormValue("share_root")),
+		ModeleDossier:   strings.TrimSpace(r.FormValue("modele_dossier")),
+		GroupeProfs:     strings.TrimSpace(r.FormValue("teachers_group")),
+		OUProfs:         strings.TrimSpace(r.FormValue("teachers_ou")),
+		AutoSurCreation: r.FormValue("auto_creation") != "",
+	}
+	if erreurs := cfg.Validate(); len(erreurs) > 0 {
+		s.classSpacesMessage(w, langue, strings.Join(erreurs, " "), true)
+		return
+	}
+	if err := classspaces.EnregistrerConfig(s.dossierClassSpaces(), cfg); err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	if s.journal != nil {
+		entree := nouvelleEntree("class_spaces_config", cfg.PartageRacine, "succes",
+			fmt.Sprintf("Modèle: %s, profs: %s", cfg.ModeleDossier, cfg.GroupeProfs))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+	s.classSpacesMessage(w, langue, Tr(langue, "classspaces.config_enregistree"), false)
+}
+
+// planClassSpaces complète un plan (membres classés profs/élèves) via l'annuaire.
+func (s *Server) planClassSpaces(r *http.Request, pool *ad.Pool, cfg classspaces.Config, plan classspaces.Plan) classspaces.Plan {
+	g, err := pool.GroupGet(r.Context(), plan.GroupDN)
+	if err != nil {
+		return plan
+	}
+	for _, membreDN := range g.Members {
+		u, err := pool.UserGet(r.Context(), membreDN)
+		if err != nil {
+			continue
+		}
+		if classspaces.ClasserMembre(u.DN, u.MemberOf, cfg) == classspaces.RoleProf {
+			plan.Profs = append(plan.Profs, u.SAMAccountName)
+		} else {
+			plan.Eleves = append(plan.Eleves, u.SAMAccountName)
+		}
+	}
+	return plan
+}
+
+// classSpacesPlan construit et affiche le plan d'un espace de classe.
+func (s *Server) classSpacesPlan(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	groupDN := strings.TrimSpace(r.FormValue("group_dn"))
+	groupName := strings.TrimSpace(r.FormValue("group_name"))
+	if groupDN == "" || groupName == "" {
+		s.classSpacesMessage(w, langue, Tr(langue, "classspaces.champs_obligatoires"), true)
+		return
+	}
+
+	cfg := classspaces.ChargerConfig(s.dossierClassSpaces())
+	plan := classspaces.Plan{GroupDN: groupDN, GroupName: groupName, Path: cfg.ResolvePath(groupName)}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.classSpacesPlanFragment(w, langue, plan, "attente_ad",
+			"connexion AD requise pour lister et classer les membres")
+		return
+	}
+
+	plan = s.planClassSpaces(r, pool, cfg, plan)
+	entree := classspaces.ChargerEtat(s.dossierClassSpaces())[groupDN]
+	diff := classspaces.PlanifierSync(entree.Members, plan.Membres())
+	detail := fmt.Sprintf("%d membre(s) : %d prof(s), %d élève(s) — +%d / -%d depuis l'état enregistré",
+		len(plan.Membres()), len(plan.Profs), len(plan.Eleves), len(diff.Ajoutes), len(diff.Retires))
+	s.classSpacesPlanFragment(w, langue, plan, "succes", detail)
+}
+
+// classSpacesMarkSynced enregistre l'appartenance AD courante comme état de
+// référence synchronisé pour un espace de classe.
+func (s *Server) classSpacesMarkSynced(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	groupDN := strings.TrimSpace(r.FormValue("group_dn"))
+	groupName := strings.TrimSpace(r.FormValue("group_name"))
+	if groupDN == "" || groupName == "" {
+		s.classSpacesMessage(w, langue, Tr(langue, "classspaces.champs_obligatoires"), true)
+		return
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.classSpacesMessage(w, langue, "connexion AD requise pour enregistrer les membres", true)
+		return
+	}
+
+	cfg := classspaces.ChargerConfig(s.dossierClassSpaces())
+	plan := s.planClassSpaces(r, pool, cfg, classspaces.Plan{
+		GroupDN: groupDN, GroupName: groupName, Path: cfg.ResolvePath(groupName),
+	})
+	if err := classspaces.MarquerSynchronise(s.dossierClassSpaces(), groupDN, plan.Membres()); err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	s.auditClassSpaces(sess, "class_spaces_marquer_sync", plan)
+	s.classSpacesMessage(w, langue,
+		fmt.Sprintf("%s (%d membre(s))", Tr(langue, "classspaces.marque_sync"), len(plan.Membres())), false)
+}
+
+// classSpacesCreationScript génère le script de création (dossier + partage + droits).
+func (s *Server) classSpacesCreationScript(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	groupDN := strings.TrimSpace(r.FormValue("group_dn"))
+	groupName := strings.TrimSpace(r.FormValue("group_name"))
+	if groupName == "" {
+		s.classSpacesMessage(w, langue, Tr(langue, "classspaces.group_name_obligatoire"), true)
+		return
+	}
+
+	cfg := classspaces.ChargerConfig(s.dossierClassSpaces())
+	plan := classspaces.Plan{GroupDN: groupDN, GroupName: groupName, Path: cfg.ResolvePath(groupName)}
+	// Les membres ne sont chargés que si le groupe est identifié (DN fourni).
+	if groupDN != "" {
+		if pool, err := s.getPool(sess); err == nil {
+			plan = s.planClassSpaces(r, pool, cfg, plan)
+		}
+	}
+
+	script := classspaces.ScriptCreation([]classspaces.Plan{plan}, sess.Domaine)
+	s.classSpacesScriptFragment(w, langue, plan, script)
+	s.auditClassSpaces(sess, "class_spaces_creation_script", plan)
+}
+
+// classSpacesSyncScript génère le script de synchronisation membres AD ↔ droits.
+func (s *Server) classSpacesSyncScript(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	groupDN := strings.TrimSpace(r.FormValue("group_dn"))
+	groupName := strings.TrimSpace(r.FormValue("group_name"))
+	chemin := strings.TrimSpace(r.FormValue("chemin"))
+	if groupDN == "" || groupName == "" {
+		s.classSpacesMessage(w, langue, Tr(langue, "classspaces.champs_obligatoires"), true)
+		return
+	}
+
+	cfg := classspaces.ChargerConfig(s.dossierClassSpaces())
+	if chemin == "" {
+		chemin = cfg.ResolvePath(groupName)
+	}
+	plan := classspaces.Plan{GroupDN: groupDN, GroupName: groupName, Path: chemin}
+
+	script := classspaces.ScriptSync(plan, sess.Domaine, cfg.GroupeProfs, cfg.OUProfs)
+	s.classSpacesScriptFragment(w, langue, plan, script)
+	s.auditClassSpaces(sess, "class_spaces_sync_script", plan)
+}
+
+// auditClassSpaces journalise la génération d'un script d'espace de classe.
+func (s *Server) auditClassSpaces(sess *session, action string, plan classspaces.Plan) {
+	if s.journal == nil {
+		return
+	}
+	entree := nouvelleEntree(action, plan.Path, "succes",
+		fmt.Sprintf("Groupe: %s, profs: %d, élèves: %d", plan.GroupName, len(plan.Profs), len(plan.Eleves)))
+	entree.Utilisateur = sess.Utilisateur
+	entree.Domaine = sess.Domaine
+	_ = s.journal.Record(entree)
+}
+
+// classSpacesMessage rend un message simple (succès ou erreur).
+func (s *Server) classSpacesMessage(w http.ResponseWriter, langue, message string, erreur bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	classe := "text-emerald-600 dark:text-emerald-400"
+	if erreur {
+		classe = "text-rose-600 dark:text-rose-400"
+	}
+	fmt.Fprintf(w, `<p class="text-sm %s">%s</p>`, classe, html.EscapeString(message))
+}
+
+// classSpacesPlanFragment rend le fragment HTML du plan d'un espace.
+func (s *Server) classSpacesPlanFragment(w http.ResponseWriter, langue string, plan classspaces.Plan, statut, detail string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "classspaces.resultat") + `</h2>`)
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "classspaces.chemin_espace"), html.EscapeString(plan.Path)))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "classspaces.partage_nom"), html.EscapeString(plan.ShareName())))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %d</p>`, Tr(langue, "classspaces.profs"), len(plan.Profs)))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %d</p>`, Tr(langue, "classspaces.eleves"), len(plan.Eleves)))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "classspaces.statut"), html.EscapeString(statut)))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "classspaces.detail"), html.EscapeString(detail)))
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// classSpacesScriptFragment rend le script PowerShell généré.
+func (s *Server) classSpacesScriptFragment(w http.ResponseWriter, langue string, plan classspaces.Plan, script string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "classspaces.script") + `</h2>`)
+	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500">%s : %s</p>`, Tr(langue, "classspaces.chemin_espace"), html.EscapeString(plan.Path)))
+	b.WriteString(`<pre class="mt-3 overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">`)
+	b.WriteString(html.EscapeString(script))
+	b.WriteString(`</pre></div>`)
 	w.Write([]byte(b.String()))
 }
 

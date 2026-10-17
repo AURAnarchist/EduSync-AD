@@ -267,7 +267,7 @@ edusync-ad/
 | **M15 — Scripts logon/logoff** | Éditeur bat/powershell/vbs, variables, déploiement `scriptPath`/GPO | ✅ Livré et testé (B3) |
 | **M16 — Heures de connexion** | Grille 24h × 7j, préréglages, attribut `logonHours` | ✅ Livré et testé (B2) |
 | **M17 — Dossiers personnels** | Création auto `\\srv\homes\%USERNAME%`, droits NTFS, lettre lecteur | ✅ Livré et testé (B5) |
-| **M18 — Espaces partagés par classe** | Partage SMB + NTFS à la création du groupe de classe, sync membres ↔ droits | ⬜ |
+| **M18 — Espaces partagés par classe** | Partage SMB + NTFS à la création du groupe de classe, sync membres ↔ droits | ✅ Livré et testé (B7) |
 | **M19 — Microsoft 365 / Entra ID** | App registration, users cloud + licences, groupes/Teams, photos | ⬜ |
 | **M20 — Exchange** | Boîtes aux lettres, aliases/proxy, policies, quotas | ⬜ |
 | **M21 — RDS / Bureau à distance** | Collections, RemoteApp, UPD/FSLogix | ⬜ |
@@ -741,6 +741,7 @@ Ajoute le support multisite (multi-domaine/forêt).
 17. **Lot B, B4** : ✅ fait — M14 Quotas de disque : `internal/ad/quota.go` (grille quota, attribut msDS-QuotaAmount, seuils alerte/blocage, formatage taille), routes UI `/app/quotas`, gabarit `quotas.html`, CLI `quotas simulate/execute`, i18n fr/en, tests unitaires.
 18. **Lot B, B5** : ✅ fait — M17 Dossiers personnels : `internal/ad/homedirs.go` (chemin UNC \\srv\homes\%USERNAME%, lettre de lecteur, attributs homeDirectory/homeDrive), routes UI `/app/homedirs`, gabarit `homedirs.html`, CLI `homedirs simulate/execute`, i18n fr/en, tests unitaires.
 19. **Lot B, B6** : ✅ fait — M12 Photos d'identité : `internal/ad/photos.go` (attributs thumbnailPhoto/jpegPhoto, lecture du fichier disque, recadrage 3:4 centré + redimensionnement + ré-encodage JPEG, limite 200 Ko, import en masse `<sAMAccountName>.jpg`), routes UI `/app/photos`, gabarit `photos.html`, CLI `photos simulate/execute`, i18n fr/en, tests unitaires.
+20. **Lot B, B7** : ✅ fait — M18 Espaces partagés par classe : `internal/classspaces/classspaces.go` (configuration partagée `\\srv\classes\%GROUP%`, classement profs/élèves par groupe ou OU, plan + diff de synchronisation, génération des scripts PowerShell création/partage SMB + droits NTFS et synchro membres AD ↔ droits, persistance `class_spaces.json`/`class_spaces_state.json` au format Python, hook `NotifierCreationGroupe`), routes UI `/app/class-spaces` (+ config/plan/creation-script/sync-script), gabarit `class_spaces.html`, CLI `class-spaces plan/creation-script/sync-script/notify/config`, i18n fr/en, tests unitaires.
 
 **Priorité 2 — releases :**
 

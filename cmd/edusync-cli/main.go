@@ -77,6 +77,11 @@ Commandes :
   homedirs execute        Applique un dossier personnel (JSON)
   photos simulate         Simule l'application d'une photo (JSON)
   photos execute          Applique une photo (JSON)
+  class-spaces plan             Simule un espace partagé de classe
+  class-spaces creation-script  Génère le script PowerShell de création
+  class-spaces sync-script      Génère le script PowerShell de synchro
+  class-spaces notify           Enregistre un espace en attente (hook)
+  class-spaces config           Affiche la configuration des espaces
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -131,6 +136,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdHomeDirs(args[1:], stdout, stderr)
 	case "photos":
 		return cmdPhotos(args[1:], stdout, stderr)
+	case "class-spaces":
+		return cmdClassSpaces(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

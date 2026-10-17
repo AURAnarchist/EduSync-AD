@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/estemobs/EduSync-AD/internal/audit"
+	"github.com/estemobs/EduSync-AD/internal/classspaces"
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/progress"
 )
@@ -800,5 +801,144 @@ func TestPhotosSansSession(t *testing.T) {
 	w := demander(t, s, "GET", "/app/photos", nil, nil)
 	if w.Code != http.StatusSeeOther {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
+
+// ─── Espaces partagés par classe (M18) ────────────────────────────────────
+
+func TestClassSpacesPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/class-spaces", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	if !strings.Contains(corps, "Espaces partag") {
+		t.Errorf("titre absent, body: %s", corps)
+	}
+	if !strings.Contains(corps, "share_root") {
+		t.Errorf("formulaire de configuration absent")
+	}
+}
+
+func TestClassSpacesConfig(t *testing.T) {
+	s, dir := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/class-spaces/config", url.Values{
+		"share_root":     {`\\fs01\classes`},
+		"modele_dossier": {"%GROUP%"},
+		"teachers_group": {"CN=Profs,DC=lycee,DC=local"},
+		"teachers_ou":    {"OU=Profs,DC=lycee,DC=local"},
+		"auto_creation":  {"1"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+
+	cfg := classspaces.ChargerConfig(dir)
+	if cfg.PartageRacine != `\\fs01\classes` {
+		t.Errorf("PartageRacine = %q", cfg.PartageRacine)
+	}
+	if cfg.GroupeProfs != "CN=Profs,DC=lycee,DC=local" {
+		t.Errorf("GroupeProfs = %q", cfg.GroupeProfs)
+	}
+	if !cfg.AutoSurCreation {
+		t.Error("AutoSurCreation devrait être vrai")
+	}
+}
+
+func TestClassSpacesConfigInvalide(t *testing.T) {
+	s, dir := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/class-spaces/config", url.Values{
+		"share_root":     {"D:/classes"}, // non UNC
+		"modele_dossier": {"%GROUP%"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	// Configuration invalide : rien ne doit être enregistré.
+	if cfg := classspaces.ChargerConfig(dir); cfg.PartageRacine == "D:/classes" {
+		t.Error("une configuration invalide ne doit pas être enregistrée")
+	}
+}
+
+func TestClassSpacesPlan(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/class-spaces/plan", url.Values{
+		"group_dn":   {"CN=6emeA,OU=Classes,DC=lycee,DC=local"},
+		"group_name": {"6emeA"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	corps := w.Body.String()
+	if !strings.Contains(corps, "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", corps)
+	}
+	if !strings.Contains(corps, `classes\6emeA`) {
+		t.Errorf("chemin de l'espace absent, body: %s", corps)
+	}
+}
+
+func TestClassSpacesCreationScript(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/class-spaces/creation-script", url.Values{
+		"group_name": {"6emeA"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "New-SmbShare") {
+		t.Errorf("script de création absent, body: %s", w.Body.String())
+	}
+}
+
+func TestClassSpacesSyncScript(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/class-spaces/sync-script", url.Values{
+		"group_dn":   {"CN=6emeA,OU=Classes,DC=lycee,DC=local"},
+		"group_name": {"6emeA"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Get-ADGroupMember") {
+		t.Errorf("script de synchro absent, body: %s", w.Body.String())
+	}
+}
+
+func TestClassSpacesSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/class-spaces", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
+
+func TestClassSpacesMarkSyncedSansAd(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/class-spaces/mark-synced", url.Values{
+		"group_dn":   {"CN=6emeA,OU=Classes,DC=lycee,DC=local"},
+		"group_name": {"6emeA"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "connexion AD requise") {
+		t.Errorf("message attendu, body: %s", w.Body.String())
 	}
 }
