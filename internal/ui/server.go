@@ -37,6 +37,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/exchange"
 	"github.com/estemobs/EduSync-AD/internal/graph"
+	"github.com/estemobs/EduSync-AD/internal/grouptemplates"
 	"github.com/estemobs/EduSync-AD/internal/label"
 	"github.com/estemobs/EduSync-AD/internal/m365"
 	"github.com/estemobs/EduSync-AD/internal/mailer"
@@ -190,6 +191,9 @@ type PageData struct {
 	// Étiquettes avancées (M24)
 	ModelesLabel []label.ModeleLabel
 	MailLabel    mailer.MailConfig
+
+	// Modèles de groupes (M23)
+	ModelesGT []grouptemplates.ModeleGroupe
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -613,6 +617,14 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/label/trombinoscope", s.requireAuthSession(s.labelTrombinoscope))
 	mux.HandleFunc("POST /app/label/mail", s.requireAuthSession(s.labelMail))
 	mux.HandleFunc("POST /app/label/supprimer", s.requireAuthSession(s.labelSupprimer))
+
+	// Modèles de groupes (M23)
+	mux.HandleFunc("GET /app/group-templates", s.requireAuthSession(s.pageGroupTemplates))
+	mux.HandleFunc("POST /app/group-templates/apercu", s.requireAuthSession(s.groupTemplatesApercu))
+	mux.HandleFunc("POST /app/group-templates/instancier", s.requireAuthSession(s.groupTemplatesInstancier))
+	mux.HandleFunc("POST /app/group-templates/dupliquer", s.requireAuthSession(s.groupTemplatesDupliquer))
+	mux.HandleFunc("POST /app/group-templates/supprimer", s.requireAuthSession(s.groupTemplatesSupprimer))
+	mux.HandleFunc("GET /app/group-templates/export", s.requireAuthSession(s.groupTemplatesExporter))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux

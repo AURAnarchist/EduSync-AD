@@ -131,6 +131,15 @@ Commandes :
   label render             Génère une planche d'étiquettes PDF
   label trombinoscope      Génère un trombinoscope PDF (A4/A3)
   label send               Envoie une étiquette par mail (SMTP)
+  group-templates list     Liste les modèles de groupes
+  group-templates show     Affiche un modèle de groupe (JSON)
+  group-templates validate Valide un ou tous les modèles (JSON)
+  group-templates duplicate Duplique un modèle
+  group-templates remove   Supprime un modèle
+  group-templates export   Exporte un modèle (JSON ou XML)
+  group-templates import   Importe un modèle (JSON ou XML)
+  group-templates builtins Restaure/écrit les modèles intégrés
+  group-templates plan     Calcule OU + groupes + artefacts (sans écriture AD)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -205,6 +214,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdRBAC(args[1:], stdout, stderr)
 	case "label":
 		return cmdLabel(args[1:], stdout, stderr)
+	case "group-templates":
+		return cmdGroupTemplates(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

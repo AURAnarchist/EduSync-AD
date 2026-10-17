@@ -27,6 +27,7 @@ type GroupCreateParams struct {
 	Description    string
 	OU             string
 	GroupType      string   // "security" ou "distribution"
+	Scope          string   // "" (global), "global", "domainlocal" ou "universal"
 	Members        []string // DN des membres initiaux
 }
 
@@ -44,7 +45,18 @@ func (p *GroupCreateParams) Validate() error {
 	if p.GroupType != "security" && p.GroupType != "distribution" {
 		return errors.New("ad: GroupType doit être 'security' ou 'distribution'")
 	}
+	if p.Scope != "" && p.Scope != "global" && p.Scope != "domainlocal" && p.Scope != "universal" {
+		return errors.New("ad: Scope doit être 'global', 'domainlocal' ou 'universal'")
+	}
 	return nil
+}
+
+// porteeGroupe retourne la portée effective (défaut : globale).
+func (p *GroupCreateParams) porteeGroupe() string {
+	if p.Scope == "" {
+		return "global"
+	}
+	return p.Scope
 }
 
 // GroupTypeValue retourne la valeur groupType pour LDAP.
@@ -91,7 +103,7 @@ func (p *Pool) GroupCreateSimulate(ctx context.Context, params GroupCreateParams
 	changes := []string{
 		fmt.Sprintf("Créer groupe: CN=%s,%s", params.CN, params.OU),
 		fmt.Sprintf("  sAMAccountName: %s", params.SAMAccountName),
-		fmt.Sprintf("  groupType: %s (%d)", params.GroupType, GroupTypeValue(params.GroupType, "global")),
+		fmt.Sprintf("  groupType: %s (%d)", params.porteeGroupe(), GroupTypeValue(params.GroupType, params.porteeGroupe())),
 	}
 	if params.Description != "" {
 		changes = append(changes, fmt.Sprintf("  description: %s", params.Description))
@@ -147,7 +159,7 @@ func (p *Pool) GroupCreate(ctx context.Context, params GroupCreateParams) (*Grou
 		"objectClass":    {"top", "group"},
 		"cn":             {params.CN},
 		"sAMAccountName": {params.SAMAccountName},
-		"groupType":      {fmt.Sprint(GroupTypeValue(params.GroupType, "global"))},
+		"groupType":      {fmt.Sprint(GroupTypeValue(params.GroupType, params.porteeGroupe()))},
 	}
 	if params.Description != "" {
 		attrs["description"] = []string{params.Description}

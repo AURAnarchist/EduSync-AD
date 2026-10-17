@@ -1,0 +1,131 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "gt.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "gt.sous_titre"}}</p>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-semibold">{{tr .Langue "gt.modeles"}}</h2>
+      <span class="text-sm text-slate-500">{{len .ModelesGT}}</span>
+    </div>
+    {{if .ModelesGT}}
+    <div class="mt-3 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-xs uppercase text-slate-500">
+          <tr>
+            <th class="py-1 pr-3">{{tr .Langue "gt.col_id"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "gt.col_nom"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "gt.col_type"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "gt.col_ou"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "gt.col_groupes"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "gt.col_champs"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "gt.col_heures"}}</th>
+            <th class="py-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .ModelesGT}}
+          <tr class="border-t border-slate-100 dark:border-slate-800">
+            <td class="py-1 pr-3 font-mono">{{.ID}}</td>
+            <td class="py-1 pr-3">{{.Nom}}</td>
+            <td class="py-1 pr-3 text-xs">{{.Type}}</td>
+            <td class="py-1 pr-3 font-mono text-xs">{{.MotifOU}}</td>
+            <td class="py-1 pr-3 text-xs">{{len .Groupes}}</td>
+            <td class="py-1 pr-3 font-mono text-xs">{{range .Placeholders}}{{.}} {{end}}</td>
+            <td class="py-1 pr-3 text-xs">{{.PrereglageHeure}}</td>
+            <td class="py-1 text-right whitespace-nowrap">
+              <a href="/app/group-templates/export?id={{.ID}}&amp;format=json"
+                 class="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                JSON
+              </a>
+              <a href="/app/group-templates/export?id={{.ID}}&amp;format=xml"
+                 class="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                XML
+              </a>
+              <form method="post" action="/app/group-templates/dupliquer" class="inline">
+                <input type="hidden" name="modele" value="{{.ID}}">
+                <button type="submit"
+                        class="rounded-md border border-indigo-300 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:hover:bg-indigo-950">
+                  {{tr $.Langue "gt.dupliquer"}}
+                </button>
+              </form>
+              <form method="post" action="/app/group-templates/supprimer" class="inline">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <button type="submit"
+                        class="rounded-md border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-700 dark:hover:bg-rose-950">
+                  {{tr $.Langue "gt.supprimer"}}
+                </button>
+              </form>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="mt-3 text-sm text-slate-500">{{tr .Langue "gt.aucun"}}</p>
+    {{end}}
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "gt.plan_titre"}}</h2>
+    <p class="mt-1 text-xs text-slate-500">{{tr .Langue "gt.plan_aide"}}</p>
+    <form class="mt-4 grid gap-3 sm:grid-cols-2"
+          hx-post="/app/group-templates/apercu" hx-target="#gt-result" hx-swap="innerHTML">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "gt.champ_modele"}}</span>
+        <select name="modele" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          {{range .ModelesGT}}
+          <option value="{{.ID}}">{{.Nom}}</option>
+          {{end}}
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "gt.champ_parent"}}</span>
+        <input name="parent_dn" type="text" placeholder="ou=Eleves,dc=lycee,dc=local"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm sm:col-span-2">
+        <span class="text-slate-500">{{tr .Langue "gt.champ_valeurs"}}</span>
+        <textarea name="valeurs" rows="3" placeholder="classe=3emeA"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-800"></textarea>
+        <span class="mt-1 block text-xs text-slate-500">{{tr .Langue "gt.valeurs_aide"}}</span>
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "gt.champ_domaine"}}</span>
+        <input name="domaine" type="text" placeholder="lycee.local"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "gt.champ_artefacts"}}</span>
+        <input name="artifacts" type="text" placeholder="/var/lib/edusync/artefacts"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input name="scope" type="checkbox" value="1">
+        <span>{{tr .Langue "gt.champ_scope"}}</span>
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input name="home_global" type="checkbox" value="1">
+        <span>{{tr .Langue "gt.champ_home"}}</span>
+      </label>
+      <div class="flex gap-2 sm:col-span-2">
+        <button type="submit"
+                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "gt.apercu"}}
+        </button>
+        <button type="button"
+                hx-post="/app/group-templates/instancier"
+                hx-include="closest form"
+                hx-target="#gt-result" hx-swap="innerHTML"
+                class="rounded-md border border-indigo-600 px-4 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950">
+          {{tr .Langue "gt.instancier"}}
+        </button>
+      </div>
+    </form>
+    <div id="gt-result" class="mt-4"></div>
+  </div>
+</div>
+{{end}}

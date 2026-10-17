@@ -13,6 +13,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/classspaces"
 	"github.com/estemobs/EduSync-AD/internal/config"
+	"github.com/estemobs/EduSync-AD/internal/grouptemplates"
 	"github.com/estemobs/EduSync-AD/internal/label"
 	"github.com/estemobs/EduSync-AD/internal/mailer"
 	"github.com/estemobs/EduSync-AD/internal/multisite"
@@ -1751,6 +1752,147 @@ func TestLabelSansSession(t *testing.T) {
 	s, _ := nouveauServeur(t)
 
 	w := demander(t, s, "GET", "/app/label", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
+
+// ─── Modèles de groupes (M23) ────────────────────────────────────────────
+
+func TestGroupTemplatesPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/group-templates", nil,
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	for _, attendu := range []string{"classe_eleve", "Eleves-{classe}", "personnel_admin"} {
+		if !strings.Contains(corps, attendu) {
+			t.Errorf("page sans %q", attendu)
+		}
+	}
+}
+
+func TestGroupTemplatesApercuPlan(t *testing.T) {
+	s, dir := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	artefacts := filepath.Join(dir, "gt-artefacts")
+
+	w := demander(t, s, "POST", "/app/group-templates/apercu", url.Values{
+		"modele":    {"classe_eleve"},
+		"parent_dn": {"ou=Eleves,dc=lycee,dc=local"},
+		"valeurs":   {"classe=3emeA"},
+		"artifacts": {artefacts},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d (corps: %s)", w.Code, w.Body.String())
+	}
+	corps := w.Body.String()
+	if !strings.Contains(corps, "ou=Eleves-3emeA,ou=Eleves,dc=lycee,dc=local") {
+		t.Errorf("OU cible absente : %s", corps)
+	}
+	if !strings.Contains(corps, "mapping-lecteur-h.bat") {
+		t.Errorf("artefact absent : %s", corps)
+	}
+	entrees, err := os.ReadDir(artefacts)
+	if err != nil {
+		t.Fatalf("artefacts: %v", err)
+	}
+	if len(entrees) != 4 {
+		t.Errorf("4 artefacts attendus, obtenu %d", len(entrees))
+	}
+	// L'aperçu n'écrit aucune config scopée.
+	if _, err := os.Stat(filepath.Join(dir, grouptemplates.FichierConfigsProfils)); !os.IsNotExist(err) {
+		t.Error("l'aperçu ne doit pas écrire les configs scopées")
+	}
+}
+
+func TestGroupTemplatesApercuValeursManquantes(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/group-templates/apercu", url.Values{
+		"modele":    {"classe_eleve"},
+		"parent_dn": {"ou=Eleves,dc=lycee,dc=local"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("code = %d, attendu 422", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "classe") {
+		t.Errorf("erreur sans mention du champ : %s", w.Body.String())
+	}
+}
+
+func TestGroupTemplatesDupliquerEtSupprimer(t *testing.T) {
+	s, dir := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+	chemin := filepath.Join(dir, grouptemplates.NomFichier)
+
+	w := demander(t, s, "POST", "/app/group-templates/dupliquer", url.Values{
+		"modele": {"classe_eleve"},
+		"nom":    {"Classe 6e"},
+	}, entetes)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("code = %d, attendu 303", w.Code)
+	}
+	modeles := grouptemplates.ChargerModeles(chemin)
+	if len(modeles) != 5 {
+		t.Fatalf("5 modèles attendus après duplication, obtenu %d", len(modeles))
+	}
+
+	wSuppr := demander(t, s, "POST", "/app/group-templates/supprimer", url.Values{
+		"id": {"classe_eleve-2"},
+	}, entetes)
+	if wSuppr.Code != http.StatusSeeOther {
+		t.Fatalf("code = %d, attendu 303", wSuppr.Code)
+	}
+	if len(grouptemplates.ChargerModeles(chemin)) != 4 {
+		t.Error("modèle dupliqué non supprimé")
+	}
+}
+
+func TestGroupTemplatesExportXML(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/group-templates/export?id=classe_eleve&format=xml", nil,
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.Contains(ct, "xml") {
+		t.Errorf("content-type = %q", ct)
+	}
+	if !strings.Contains(w.Header().Get("Content-Disposition"), "classe_eleve.xml") {
+		t.Errorf("content-disposition = %q", w.Header().Get("Content-Disposition"))
+	}
+	if !strings.HasPrefix(w.Body.String(), "<?xml") {
+		t.Error("corps non XML")
+	}
+}
+
+func TestGroupTemplatesExportJSON(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/group-templates/export?id=personnel_admin&format=json", nil,
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"ou_rdn_pattern"`) {
+		t.Errorf("JSON sans motif d'OU : %s", w.Body.String())
+	}
+}
+
+func TestGroupTemplatesSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/group-templates", nil, nil)
 	if w.Code != http.StatusSeeOther {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}

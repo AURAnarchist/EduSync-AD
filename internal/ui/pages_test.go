@@ -11,6 +11,7 @@ import (
 
 	"github.com/estemobs/EduSync-AD/internal/ad"
 	"github.com/estemobs/EduSync-AD/internal/audit"
+	"github.com/estemobs/EduSync-AD/internal/grouptemplates"
 	"github.com/estemobs/EduSync-AD/internal/label"
 	"github.com/estemobs/EduSync-AD/internal/mailer"
 	"github.com/estemobs/EduSync-AD/internal/models"
@@ -150,6 +151,7 @@ func donneesTestCompletes() PageData {
 		ExplorerGroup: &ad.Group{DN: "CN=G1,DC=X", CN: "G1", SAMAccountName: "G1"},
 		ExplorerOU:    &ad.OU{DN: "OU=Eleves,DC=X", Name: "Eleves", ParentDN: "DC=X"},
 		ModelesLabel:  label.ModelesIntegres(),
+		ModelesGT:     grouptemplates.ModelesIntegres(),
 		MailLabel: mailer.MailConfig{
 			Host: "smtp.exemple.fr", Port: 587, Username: "edusync", Password: "secret",
 			UseTLS: true, FromAddr: "edusync@exemple.fr", FromName: "EduSync AD", Timeout: 20,
