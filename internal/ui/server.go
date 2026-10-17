@@ -39,6 +39,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/graph"
 	"github.com/estemobs/EduSync-AD/internal/m365"
 	"github.com/estemobs/EduSync-AD/internal/models"
+	"github.com/estemobs/EduSync-AD/internal/multisite"
 	"github.com/estemobs/EduSync-AD/internal/progress"
 	"github.com/estemobs/EduSync-AD/internal/rds"
 	"github.com/estemobs/EduSync-AD/internal/updater"
@@ -174,6 +175,10 @@ type PageData struct {
 	// Coffre-fort local des mots de passe
 	NombreCoffre int
 	CoffreSAMs   []string
+
+	// Multisite / multi-domaine (M25)
+	Sites           []multisite.ProfilDomaine
+	DomainesJournal []string
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -580,6 +585,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/vault/rechercher", s.requireAuthSession(s.vaultRechercher))
 	mux.HandleFunc("POST /app/vault/supprimer", s.requireAuthSession(s.vaultSupprimer))
 	mux.HandleFunc("POST /app/vault/purger", s.requireAuthSession(s.vaultPurger))
+
+	// Multisite / multi-domaine (M25)
+	mux.HandleFunc("GET /app/multisite", s.requireAuthSession(s.pageMultisite))
+	mux.HandleFunc("POST /app/multisite/ajouter", s.requireAuthSession(s.multisiteAjouter))
+	mux.HandleFunc("POST /app/multisite/supprimer", s.requireAuthSession(s.multisiteSupprimer))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -4076,6 +4086,144 @@ func (s *Server) exchangeScriptFragment(w http.ResponseWriter, langue, script st
 	b.WriteString(html.EscapeString(script))
 	b.WriteString(`</pre></div>`)
 	w.Write([]byte(b.String()))
+}
+
+// ─── Multisite / multi-domaine (M25) ─────────────────────────────────────
+
+// dossierMultisite retourne le dossier de domaines.json : à côté de config.json
+// en test, sinon dossier de configuration utilisateur (partagé avec Python).
+func (s *Server) dossierMultisite() string {
+	if s.opts.ConfigPath != "" {
+		return filepath.Dir(s.opts.ConfigPath)
+	}
+	if dir, err := config.ConfigDir(); err == nil && dir != "" {
+		return dir
+	}
+	return "."
+}
+
+// cheminSites retourne le chemin de domaines.json.
+func (s *Server) cheminSites() string {
+	return filepath.Join(s.dossierMultisite(), multisite.NomFichier)
+}
+
+// cheminCleSites retourne le chemin de la clé locale (secret.key).
+func (s *Server) cheminCleSites() string {
+	return filepath.Join(s.dossierMultisite(), multisite.NomFichierCle)
+}
+
+func (s *Server) pageMultisite(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "multisite.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+
+	if profils, err := multisite.ChargerSites(s.cheminSites(), s.cheminCleSites()); err == nil {
+		d.Sites = profils
+	}
+	if s.journal != nil {
+		if domaines, err := s.journal.Domains(); err == nil {
+			d.DomainesJournal = domaines
+		}
+	}
+	s.rendre(w, http.StatusOK, "multisite.html", d)
+}
+
+// multisiteAjouter enregistre un nouveau profil de domaine.
+func (s *Server) multisiteAjouter(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	profils, err := multisite.ChargerSites(s.cheminSites(), s.cheminCleSites())
+	if err != nil {
+		s.multisiteMessage(w, langue, err.Error(), true)
+		return
+	}
+	memoriser := r.FormValue("remember_password") != ""
+	profil := multisite.NouveauProfil(
+		strings.TrimSpace(r.FormValue("label")),
+		strings.TrimSpace(r.FormValue("domain")),
+		multisite.AvecControleur(r.FormValue("controller")),
+		multisite.AvecIdentifiant(r.FormValue("username")),
+		multisite.AvecMotDePasse(r.FormValue("password"), memoriser),
+		multisite.AvecVerificationCertificat(valeurCaseACocher(r.FormValue("verify_certificate"))),
+		multisite.AvecCACert(r.FormValue("ca_cert_path")),
+		multisite.AvecExistants(profils),
+	)
+	if errs := profil.Validate(); len(errs) > 0 {
+		s.multisiteMessage(w, langue, strings.Join(errs, " "), true)
+		return
+	}
+	profils = append(profils, profil)
+	if err := multisite.SauvegarderSites(profils, s.cheminSites(), s.cheminCleSites()); err != nil {
+		s.multisiteMessage(w, langue, err.Error(), true)
+		return
+	}
+	if s.journal != nil {
+		entree := nouvelleEntree("multisite_ajout", profil.Domain, "succes", profil.DisplayName())
+		_ = s.journal.Record(entree)
+	}
+	s.multisiteMessage(w, langue, fmt.Sprintf(Tr(langue, "multisite.ajoute"), profil.DisplayName()), false)
+}
+
+// multisiteSupprimer retire un profil de domaine.
+func (s *Server) multisiteSupprimer(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	id := strings.TrimSpace(r.FormValue("id"))
+	if id == "" {
+		s.multisiteMessage(w, langue, Tr(langue, "multisite.id_obligatoire"), true)
+		return
+	}
+	profils, err := multisite.ChargerSites(s.cheminSites(), s.cheminCleSites())
+	if err != nil {
+		s.multisiteMessage(w, langue, err.Error(), true)
+		return
+	}
+	restants := make([]multisite.ProfilDomaine, 0, len(profils))
+	supprime := false
+	for _, profil := range profils {
+		if profil.ID == id {
+			supprime = true
+			continue
+		}
+		restants = append(restants, profil)
+	}
+	if !supprime {
+		s.multisiteMessage(w, langue, Tr(langue, "multisite.introuvable"), true)
+		return
+	}
+	if err := multisite.SauvegarderSites(restants, s.cheminSites(), s.cheminCleSites()); err != nil {
+		s.multisiteMessage(w, langue, err.Error(), true)
+		return
+	}
+	s.multisiteMessage(w, langue, Tr(langue, "multisite.supprime"), false)
+}
+
+// multisiteMessage rend un message simple (succès ou erreur).
+func (s *Server) multisiteMessage(w http.ResponseWriter, langue, message string, erreur bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	classe := "text-emerald-600 dark:text-emerald-400"
+	if erreur {
+		classe = "text-rose-600 dark:text-rose-400"
+	}
+	fmt.Fprintf(w, `<p class="text-sm %s">%s</p>`, classe, html.EscapeString(message))
+}
+
+// valeurCaseACocher indique si une case à cocher de formulaire est cochée.
+func valeurCaseACocher(valeur string) bool {
+	switch strings.ToLower(strings.TrimSpace(valeur)) {
+	case "1", "on", "true", "oui", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 // ─── Coffre-fort local des mots de passe ──────────────────────────────────

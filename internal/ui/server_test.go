@@ -13,6 +13,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/classspaces"
 	"github.com/estemobs/EduSync-AD/internal/config"
+	"github.com/estemobs/EduSync-AD/internal/multisite"
 	"github.com/estemobs/EduSync-AD/internal/progress"
 	"github.com/estemobs/EduSync-AD/internal/vault"
 )
@@ -1482,6 +1483,76 @@ func TestVaultSansSession(t *testing.T) {
 	s, _ := nouveauServeur(t)
 
 	w := demander(t, s, "GET", "/app/vault", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
+
+// ─── Multisite / multi-domaine (M25) ─────────────────────────────────────
+
+func TestMultisitePage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/multisite", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Multisite") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestMultisiteAjouterEtSupprimer(t *testing.T) {
+	s, dir := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/multisite/ajouter", url.Values{
+		"label":             {"Lycée Victor Hugo"},
+		"domain":            {"lycee-victor-hugo.local"},
+		"controller":        {"10.0.0.5"},
+		"username":          {"admin"},
+		"remember_password": {"1"},
+		"password":          {"S3cret!"},
+	}, entetes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ajouter: code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Site ajouté") {
+		t.Errorf("confirmation absente : %s", w.Body.String())
+	}
+
+	profils, err := multisite.ChargerSites(
+		filepath.Join(dir, multisite.NomFichier), filepath.Join(dir, multisite.NomFichierCle))
+	if err != nil {
+		t.Fatalf("ChargerSites: %v", err)
+	}
+	if len(profils) != 1 || profils[0].Password != "S3cret!" {
+		t.Fatalf("profils = %+v", profils)
+	}
+
+	wSuppr := demander(t, s, "POST", "/app/multisite/supprimer", url.Values{"id": {profils[0].ID}}, entetes)
+	if !strings.Contains(wSuppr.Body.String(), "Site supprimé") {
+		t.Errorf("confirmation de suppression absente : %s", wSuppr.Body.String())
+	}
+}
+
+func TestMultisiteProfilInvalide(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/multisite/ajouter", url.Values{"domain": {"a.local"}}, entetes)
+	if !strings.Contains(w.Body.String(), "libellé") {
+		t.Errorf("message d'erreur absent : %s", w.Body.String())
+	}
+}
+
+func TestMultisiteSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/multisite", nil, nil)
 	if w.Code != http.StatusSeeOther {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}

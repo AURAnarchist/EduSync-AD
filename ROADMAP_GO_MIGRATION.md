@@ -279,7 +279,7 @@ edusync-ad/
 
 | Module | Fonctionnalités | Statut Go |
 |---|---|---|
-| **M25 — Multisite** | Plusieurs domaines/forêts, `domaines.json` chiffré, sélecteur, journal par domaine | ⬜ |
+| **M25 — Multisite** | Plusieurs domaines/forêts, `domaines.json` chiffré, sélecteur, journal par domaine | ✅ Livré et testé (C1) — `internal/multisite/multisite.go` (`domaines.json` chiffré AES-256-GCM, permissions 0600, profils `ProfilDomaine` validés/normalisés, migration de `connection.local.json` M9, jamais bloquant) + `audit.Domains()` (liste des domaines du journal pour la sélection multi-site) ; CLI `multisite list/add/remove/import-legacy/ensure`, page UI `/app/multisite`, i18n fr/en, aller-retour Go ↔ Python vérifié |
 | **M26 — RBAC (délégation)** | 5 rôles, portées par OU/groupe, garde-fou sur chaque écriture AD, journal par opérateur | ⬜ |
 | **M27 — Portail auto-service** | Réinit MDP par code mail, consultation identifiant/mail, demande création compte + validation admin | ⬜ |
 | **M28 — API REST + Webhooks** | OpenAPI, webhooks (compte créé/migré/départ/MDP), sync bidirectionnelle SIS | ⬜ |
@@ -748,6 +748,7 @@ Ajoute le support multisite (multi-domaine/forêt).
 24. **Lot B, B11** : ✅ fait — M20 Exchange : `internal/exchange/exchange.go` (configuration on-prem/online avec validation, plans de boîtes et de groupes de messagerie, normalisation des adresses et alias, scripts PowerShell sur site et Exchange Online app-only, politique d'adresses, écriture LDAP `mail`/`proxyAddresses` via `Pool.UserSetAttributes`, rapport CSV, persistance `exchange.json` au format Python), CLI `exchange config/plans/onprem-script/online-script/policy-script/report`, routes UI `/app/exchange` (+ config/plans/onprem-script/online-script/policy-script), gabarit `exchange.html`, i18n fr/en, tests unitaires.
 25. **Lot B, B12** : ✅ fait — M19 Microsoft 365 / Entra ID : `internal/graph/graph.go` (client Microsoft Graph OAuth2 client_credentials avec secret ou certificat JWT RS256, jeton en cache, pagination, erreurs Graph traduites, secret chiffré AES-GCM dans `m365.json`) + `internal/m365/m365.go` (plans de comptes cloud + licences éducation, plans de groupes Entra/Teams, mapping des photos d'identité, check-list identité hybride PHS/ADFS/PTA), CLI `m365 config/user-plans/group-plans/photo-mapping/hybrid`, routes UI `/app/m365` (+ config/user-plans/group-plans), gabarit `m365.html`, i18n fr/en, tests unitaires.
 26. **Coffre MDP** : ✅ fait — coffre-fort local des mots de passe positionnés par l'application : `internal/vault/vault.go` (SQLite `password_vault.sqlite3`, AES-256-GCM, schéma et clé partagés avec Python — aller-retour vérifié dans les deux sens), CLI `vault set/get/has/delete/list/count/clear`, page UI `/app/vault`, i18n fr/en, tests unitaires.
+27. **Lot C, C1** : ✅ fait — M25 Multisite : `internal/multisite/multisite.go` (`domaines.json` chiffré AES-256-GCM, permissions 0600, validation/normalisation des profils, migration de la connexion mémorisée M9, chargement jamais bloquant) et `audit.Domains()` (domaines du journal par site) ; CLI `multisite list/add/remove/import-legacy/ensure`, page UI `/app/multisite`, i18n fr/en, aller-retour Go ↔ Python vérifié dans les deux sens.
 
 **Priorité 2 — releases :**
 

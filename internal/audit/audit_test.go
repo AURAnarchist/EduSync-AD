@@ -152,6 +152,26 @@ func TestFiltres(t *testing.T) {
 	}
 }
 
+// TestDomains verifie la liste des domaines presents (M25).
+func TestDomains(t *testing.T) {
+	l, _ := ouvrirJournal(t)
+	l.SetContext("admin", "EDUSYNC.LOCAL")
+	if err := l.Record(entree("creation_compte", "eleve01")); err != nil {
+		t.Fatal(err)
+	}
+	l.SetContext("admin", "COLLEGE.LOCAL")
+	if err := l.Record(entree("creation_compte", "eleve02")); err != nil {
+		t.Fatal(err)
+	}
+	domaines, err := l.Domains()
+	if err != nil {
+		t.Fatalf("Domains: %v", err)
+	}
+	if len(domaines) != 2 || domaines[0] != "COLLEGE.LOCAL" || domaines[1] != "EDUSYNC.LOCAL" {
+		t.Errorf("domaines = %v", domaines)
+	}
+}
+
 // TestPagination controle l'ordre anti-chronologique et les decalages.
 func TestPagination(t *testing.T) {
 	l, _ := ouvrirJournal(t)
