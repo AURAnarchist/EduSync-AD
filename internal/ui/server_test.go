@@ -1104,3 +1104,97 @@ func TestAdvancedIOSansSession(t *testing.T) {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
 }
+
+// ─── RDS / Bureau à distance (M21) ───────────────────────────────────────
+
+func TestRDSPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/rds", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "RDS / Bureau à distance") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestRDSConfigEnregistrer(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/rds/config", url.Values{
+		"broker":       {"rdcb.lycee.local"},
+		"domain":       {"LYCEE"},
+		"profile_mode": {"none"},
+	}, entetes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Configuration enregistrée") {
+		t.Errorf("confirmation absente, body: %s", w.Body.String())
+	}
+}
+
+func TestRDSCollectionScript(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	if w := demander(t, s, "POST", "/app/rds/config", url.Values{
+		"broker":       {"rdcb.lycee.local"},
+		"domain":       {"LYCEE"},
+		"profile_mode": {"none"},
+	}, entetes); w.Code != http.StatusOK {
+		t.Fatalf("config: code = %d", w.Code)
+	}
+
+	w := demander(t, s, "POST", "/app/rds/collection-script", url.Values{
+		"name":   {"Edu-Sciences"},
+		"hosts":  {"rdsh01.lycee.local,rdsh02.lycee.local"},
+		"groups": {"Profs;Eleves"},
+	}, entetes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	for _, attendu := range []string{"New-RDSessionCollection", "rdsh01.lycee.local", "LYCEE\\Profs"} {
+		if !strings.Contains(corps, attendu) {
+			t.Errorf("script sans %q", attendu)
+		}
+	}
+}
+
+func TestRDSCollectionScriptNomObligatoire(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/rds/collection-script", url.Values{
+		"hosts": {"rdsh01"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if !strings.Contains(w.Body.String(), "obligatoire") {
+		t.Errorf("erreur attendue, body: %s", w.Body.String())
+	}
+}
+
+func TestRDSFSLogixErreurSansConfig(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/rds/fslogix-script", url.Values{},
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if !strings.Contains(w.Body.String(), "FSLogix") {
+		t.Errorf("erreur FSLogix attendue, body: %s", w.Body.String())
+	}
+}
+
+func TestRDSSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/rds", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}

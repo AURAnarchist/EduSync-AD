@@ -1,0 +1,171 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "rds.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "rds.sous_titre"}}</p>
+  </div>
+
+  <!-- 1. Configuration -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "rds.config_titre"}}</h2>
+    <form method="post" action="/app/rds/config"
+          hx-post="/app/rds/config" hx-target="#rds-config-result" hx-swap="innerHTML"
+          class="mt-4 grid gap-3 sm:grid-cols-2">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.broker"}}</span>
+        <input name="broker" type="text" value="{{.ConfigRDS.Broker}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.domain"}}</span>
+        <input name="domain" type="text" value="{{.ConfigRDS.Domain}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.profile_mode"}}</span>
+        <select name="profile_mode" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <option value="none" {{if eq .ConfigRDS.ProfileMode "none"}}selected{{end}}>{{tr .Langue "rds.mode_none"}}</option>
+          <option value="upd" {{if eq .ConfigRDS.ProfileMode "upd"}}selected{{end}}>{{tr .Langue "rds.mode_upd"}}</option>
+          <option value="fslogix" {{if eq .ConfigRDS.ProfileMode "fslogix"}}selected{{end}}>{{tr .Langue "rds.mode_fslogix"}}</option>
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.upd_path"}}</span>
+        <input name="upd_path" type="text" value="{{.ConfigRDS.UPDPath}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.upd_size"}}</span>
+        <input name="upd_size_gb" type="number" min="0" value="{{.ConfigRDS.UPDSizeGB}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.fslogix_size"}}</span>
+        <input name="fslogix_size_mb" type="number" min="0" value="{{.ConfigRDS.FSLogixSizeMB}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.upd_include"}}</span>
+        <input name="upd_include_paths" type="text"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.upd_exclude"}}</span>
+        <input name="upd_exclude_paths" type="text"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm sm:col-span-2">
+        <span class="text-slate-500">{{tr .Langue "rds.fslogix_locations"}}</span>
+        <input name="fslogix_locations" type="text"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="flex items-center gap-2 text-sm sm:col-span-2">
+        <input name="fslogix_flipflop" type="checkbox" value="1" {{if .ConfigRDS.FSLogixFlipFlop}}checked{{end}}>
+        <span>{{tr .Langue "rds.fslogix_flipflop"}}</span>
+      </label>
+      <div class="sm:col-span-2">
+        <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "rds.enregistrer"}}
+        </button>
+      </div>
+    </form>
+    <div id="rds-config-result" class="mt-4"></div>
+  </div>
+
+  <!-- 2. Script des collections -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "rds.coll_titre"}}</h2>
+    <form method="post" action="/app/rds/collection-script"
+          hx-post="/app/rds/collection-script" hx-target="#rds-coll-result" hx-swap="innerHTML"
+          class="mt-4 grid gap-3 sm:grid-cols-2">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.name"}}</span>
+        <input name="name" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.description"}}</span>
+        <input name="description" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.hosts"}}</span>
+        <input name="hosts" type="text" placeholder="rdsh01,rdsh02"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.groups"}}</span>
+        <input name="groups" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <div class="sm:col-span-2">
+        <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "rds.generer"}}
+        </button>
+      </div>
+    </form>
+    <div id="rds-coll-result" class="mt-4"></div>
+  </div>
+
+  <!-- 3. Script RemoteApp -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "rds.app_titre"}}</h2>
+    <form method="post" action="/app/rds/remoteapp-script"
+          hx-post="/app/rds/remoteapp-script" hx-target="#rds-app-result" hx-swap="innerHTML"
+          class="mt-4 grid gap-3 sm:grid-cols-2">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.display_name"}}</span>
+        <input name="display_name" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.alias"}}</span>
+        <input name="alias" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.file_path"}}</span>
+        <input name="file_path" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.collection"}}</span>
+        <input name="collection" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.groups"}}</span>
+        <input name="groups" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.folder"}}</span>
+        <input name="folder_name" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.icon"}}</span>
+        <input name="icon_index" type="number" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "rds.required_command"}}</span>
+        <input name="required_command" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="flex items-center gap-2 text-sm sm:col-span-2">
+        <input name="show_in_web" type="checkbox" value="1" checked>
+        <span>{{tr .Langue "rds.show_in_web"}}</span>
+      </label>
+      <div class="sm:col-span-2">
+        <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "rds.generer"}}
+        </button>
+      </div>
+    </form>
+    <div id="rds-app-result" class="mt-4"></div>
+  </div>
+
+  <!-- 4. Script FSLogix -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "rds.fslogix_titre"}}</h2>
+    <form method="post" action="/app/rds/fslogix-script"
+          hx-post="/app/rds/fslogix-script" hx-target="#rds-fslogix-result" hx-swap="innerHTML"
+          class="mt-4">
+      <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "rds.generer"}}
+      </button>
+    </form>
+    <div id="rds-fslogix-result" class="mt-4"></div>
+  </div>
+</div>
+{{end}}

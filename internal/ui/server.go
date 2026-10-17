@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/models"
 	"github.com/estemobs/EduSync-AD/internal/progress"
+	"github.com/estemobs/EduSync-AD/internal/rds"
 	"github.com/estemobs/EduSync-AD/internal/updater"
 	"github.com/estemobs/EduSync-AD/web"
 )
@@ -155,6 +157,9 @@ type PageData struct {
 
 	// Import/Export avancés (M22)
 	ConfigAdvIO ad.ConfigAdvIO
+
+	// RDS / Bureau à distance (M21)
+	ConfigRDS rds.Config
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -534,6 +539,13 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/advanced-io/import", s.requireAuthSession(s.advioImport))
 	mux.HandleFunc("POST /app/advanced-io/gep-mapping", s.requireAuthSession(s.advioGEPMapping))
 	mux.HandleFunc("POST /app/advanced-io/config", s.requireAuthSession(s.advioConfig))
+
+	// RDS / Bureau à distance (M21)
+	mux.HandleFunc("GET /app/rds", s.requireAuthSession(s.pageRDS))
+	mux.HandleFunc("POST /app/rds/config", s.requireAuthSession(s.rdsConfigForm))
+	mux.HandleFunc("POST /app/rds/collection-script", s.requireAuthSession(s.rdsCollectionScript))
+	mux.HandleFunc("POST /app/rds/remoteapp-script", s.requireAuthSession(s.rdsRemoteAppScript))
+	mux.HandleFunc("POST /app/rds/fslogix-script", s.requireAuthSession(s.rdsFSLogixScript))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -3823,6 +3835,198 @@ func (s *Server) classSpacesScriptFragment(w http.ResponseWriter, langue string,
 	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
 	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "classspaces.script") + `</h2>`)
 	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500">%s : %s</p>`, Tr(langue, "classspaces.chemin_espace"), html.EscapeString(plan.Path)))
+	b.WriteString(`<pre class="mt-3 overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">`)
+	b.WriteString(html.EscapeString(script))
+	b.WriteString(`</pre></div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── RDS / Bureau à distance (M21) ────────────────────────────────────────
+
+// dossierRDS retourne le dossier de configuration RDS : à côté de config.json
+// (cohérent en test et avec Python), sinon dossier utilisateur.
+func (s *Server) dossierRDS() string {
+	if s.opts.ConfigPath != "" {
+		return filepath.Dir(s.opts.ConfigPath)
+	}
+	if dir, err := rds.DossierConfig(); err == nil && dir != "" {
+		return dir
+	}
+	return "."
+}
+
+func (s *Server) pageRDS(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "rds.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	d.ConfigRDS = rds.ChargerConfig(filepath.Join(s.dossierRDS(), rds.FichierConfig))
+	s.rendre(w, http.StatusOK, "rds.html", d)
+}
+
+// rdsConfigDepuisForm construit une configuration RDS depuis le formulaire.
+func rdsConfigDepuisForm(r *http.Request) rds.Config {
+	cfg := rds.ChargerConfig("")
+	cfg.Broker = strings.TrimSpace(r.FormValue("broker"))
+	cfg.Domain = strings.TrimSpace(r.FormValue("domain"))
+	if mode := strings.TrimSpace(r.FormValue("profile_mode")); mode != "" {
+		cfg.ProfileMode = mode
+	}
+	cfg.UPDPath = strings.TrimSpace(r.FormValue("upd_path"))
+	if taille, err := strconv.Atoi(strings.TrimSpace(r.FormValue("upd_size_gb"))); err == nil {
+		cfg.UPDSizeGB = taille
+	}
+	cfg.UPDIncludePaths = rds.SplitMulti(r.FormValue("upd_include_paths"))
+	cfg.UPDExcludePaths = rds.SplitMulti(r.FormValue("upd_exclude_paths"))
+	cfg.FSLogixLocations = rds.SplitMulti(r.FormValue("fslogix_locations"))
+	if taille, err := strconv.Atoi(strings.TrimSpace(r.FormValue("fslogix_size_mb"))); err == nil {
+		cfg.FSLogixSizeMB = taille
+	}
+	cfg.FSLogixFlipFlop = r.FormValue("fslogix_flipflop") != ""
+	return cfg
+}
+
+// rdsConfigForm enregistre la configuration RDS.
+func (s *Server) rdsConfigForm(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	cfg := rdsConfigDepuisForm(r)
+	if err := rds.SauvegarderConfig(filepath.Join(s.dossierRDS(), rds.FichierConfig), cfg); err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	if s.journal != nil {
+		entree := nouvelleEntree("rds_config", cfg.Broker, "succes",
+			fmt.Sprintf("Mode de profil: %s", cfg.ProfileMode))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+	s.rdsMessage(w, langue, Tr(langue, "rds.config_enregistree"), false)
+}
+
+// rdsCollectionScript génère le script PowerShell des collections de sessions.
+func (s *Server) rdsCollectionScript(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	name := strings.TrimSpace(r.FormValue("name"))
+	if name == "" {
+		s.rdsMessage(w, langue, Tr(langue, "rds.nom_obligatoire"), true)
+		return
+	}
+	cfg := rds.ChargerConfig(filepath.Join(s.dossierRDS(), rds.FichierConfig))
+	plan := rds.ConstruirePlanCollection(
+		name, r.FormValue("description"),
+		rds.SplitMulti(r.FormValue("hosts")), rds.SplitMulti(r.FormValue("groups")), cfg)
+	script, err := rds.ScriptCollections([]rds.PlanCollection{plan}, cfg)
+	if err != nil {
+		s.rdsMessage(w, langue, err.Error(), true)
+		return
+	}
+	s.rdsScriptFragment(w, langue, script)
+}
+
+// rdsRemoteAppScript génère le script PowerShell de publication des RemoteApp.
+func (s *Server) rdsRemoteAppScript(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	displayName := strings.TrimSpace(r.FormValue("display_name"))
+	filePath := strings.TrimSpace(r.FormValue("file_path"))
+	collection := strings.TrimSpace(r.FormValue("collection"))
+	if displayName == "" || filePath == "" || collection == "" {
+		s.rdsMessage(w, langue, Tr(langue, "rds.champs_obligatoires"), true)
+		return
+	}
+	cfg := rds.ChargerConfig(filepath.Join(s.dossierRDS(), rds.FichierConfig))
+	alias := strings.TrimSpace(r.FormValue("alias"))
+	if alias == "" {
+		alias = rds.CreerAlias(displayName)
+	}
+	plan := rds.PlanRemoteApp{
+		Alias:           alias,
+		DisplayName:     displayName,
+		FilePath:        filePath,
+		Collection:      collection,
+		UserGroups:      normaliserGroupesUI(rds.SplitMulti(r.FormValue("groups")), cfg.Domain),
+		ShowInWeb:       r.FormValue("show_in_web") != "",
+		FolderName:      strings.TrimSpace(r.FormValue("folder_name")),
+		RequiredCommand: strings.TrimSpace(r.FormValue("required_command")),
+	}
+	if icone, err := strconv.Atoi(strings.TrimSpace(r.FormValue("icon_index"))); err == nil {
+		plan.IconIndex = &icone
+	}
+	script, err := rds.ScriptRemoteApp([]rds.PlanRemoteApp{plan}, cfg)
+	if err != nil {
+		s.rdsMessage(w, langue, err.Error(), true)
+		return
+	}
+	s.rdsScriptFragment(w, langue, script)
+}
+
+// rdsFSLogixScript génère le script PowerShell de configuration FSLogix.
+func (s *Server) rdsFSLogixScript(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	cfg := rds.ChargerConfig(filepath.Join(s.dossierRDS(), rds.FichierConfig))
+	script, err := rds.ScriptFSLogix(cfg)
+	if err != nil {
+		s.rdsMessage(w, langue, err.Error(), true)
+		return
+	}
+	s.rdsScriptFragment(w, langue, script)
+}
+
+// normaliserGroupesUI applique le préfixe DOMAINE aux groupes sans domaine.
+func normaliserGroupesUI(groupes []string, domaine string) []string {
+	resultat := []string{}
+	for _, groupe := range groupes {
+		normalise := rds.NormaliserRefGroupe(groupe, domaine)
+		if normalise != "" && !contientValeur(resultat, normalise) {
+			resultat = append(resultat, normalise)
+		}
+	}
+	return resultat
+}
+
+// contientValeur indique si un slice de chaînes contient une valeur.
+func contientValeur(valeurs []string, cible string) bool {
+	for _, v := range valeurs {
+		if v == cible {
+			return true
+		}
+	}
+	return false
+}
+
+// rdsMessage rend un message simple (succès ou erreur).
+func (s *Server) rdsMessage(w http.ResponseWriter, langue, message string, erreur bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	classe := "text-emerald-600 dark:text-emerald-400"
+	if erreur {
+		classe = "text-rose-600 dark:text-rose-400"
+	}
+	fmt.Fprintf(w, `<p class="text-sm %s">%s</p>`, classe, html.EscapeString(message))
+}
+
+// rdsScriptFragment rend un script PowerShell généré.
+func (s *Server) rdsScriptFragment(w http.ResponseWriter, langue, script string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "rds.script") + `</h2>`)
 	b.WriteString(`<pre class="mt-3 overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">`)
 	b.WriteString(html.EscapeString(script))
 	b.WriteString(`</pre></div>`)

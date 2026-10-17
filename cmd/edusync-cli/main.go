@@ -96,6 +96,11 @@ Commandes :
   advanced-io gep          Import GEP (mapping, parse, conversion)
   advanced-io config       Configure l'outil tiers GEP
   advanced-io run-tool     Lance l'outil tiers GEP
+  rds config               Affiche/enregistre la configuration RDS
+  rds collection-script    Script de collections de sessions RDS
+  rds remoteapp-script     Script de publication des RemoteApp
+  rds fslogix-script       Script de configuration FSLogix
+  rds plans                Affiche les plans RDS enregistrés
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -156,6 +161,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdADCache(args[1:], stdout, stderr)
 	case "advanced-io":
 		return cmdAdvancedIO(args[1:], stdout, stderr)
+	case "rds":
+		return cmdRDS(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:
