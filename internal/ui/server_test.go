@@ -1304,3 +1304,102 @@ func TestExchangeSansSession(t *testing.T) {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
 }
+
+// ─── Microsoft 365 / Entra ID (M19) ──────────────────────────────────────
+
+func TestM365Page(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/m365", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Microsoft 365") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestM365ConfigEnregistrer(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/m365/config", url.Values{
+		"tenant_id":      {"11111111-2222-3333-4444-555555555555"},
+		"client_id":      {"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"},
+		"auth_mode":      {"secret"},
+		"client_secret":  {"super-secret"},
+		"usage_location": {"FR"},
+	}, entetes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Configuration enregistrée") {
+		t.Errorf("confirmation absente, body: %s", w.Body.String())
+	}
+
+	// Le secret ne doit jamais être réaffiché en clair, même dans un commentaire.
+	w2 := demander(t, s, "GET", "/app/m365", nil, entetes)
+	if strings.Contains(w2.Body.String(), "super-secret") {
+		t.Error("le secret est réaffiché dans la page")
+	}
+}
+
+func TestM365UserPlans(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/m365/user-plans", url.Values{
+		"domain":  {"lycee.onmicrosoft.com"},
+		"comptes": {"jdurand ; Jean Durand\namartin ; Alice Martin"},
+	}, entetes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	for _, attendu := range []string{"jdurand@lycee.onmicrosoft.com", "amartin@lycee.onmicrosoft.com", "2 plan(s)"} {
+		if !strings.Contains(corps, attendu) {
+			t.Errorf("plans sans %q : %s", attendu, corps)
+		}
+	}
+}
+
+func TestM365GroupPlans(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/m365/group-plans", url.Values{
+		"kind":    {"m365"},
+		"groupes": {"6ème A ; a@lycee.local ; b@lycee.local"},
+	}, entetes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	if !strings.Contains(corps, "à créer") || !strings.Contains(corps, "2 membre(s)") {
+		t.Errorf("plan de groupe inattendu : %s", corps)
+	}
+}
+
+func TestM365PlansSansDonnees(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/m365/user-plans", url.Values{"comptes": {""}}, entetes)
+	if !strings.Contains(w.Body.String(), "au moins un compte") {
+		t.Errorf("message d'erreur absent : %s", w.Body.String())
+	}
+}
+
+func TestM365SansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/m365", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}

@@ -16,7 +16,9 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	_ "image/gif" // enregistre le décodeur GIF pour image.Decode
 	"image/jpeg"
+	_ "image/png" // enregistre le décodeur PNG pour image.Decode
 	"os"
 	"path/filepath"
 
@@ -173,6 +175,28 @@ func preparerImageJPEG(donnees []byte, largeur, hauteur int) ([]byte, error) {
 		return nil, fmt.Errorf("ad: encodage JPEG: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// PreparerPhotoJPEG lit un fichier photo (JPEG, PNG ou GIF), le recadre au
+// ratio 3:4 du type demandé et retourne les octets JPEG normalisés ainsi que
+// leurs dimensions. Utilisé pour la photo de profil cloud (M19) : la photo
+// déposée dans Entra ID suit le même traitement que celle écrite dans l'AD.
+func PreparerPhotoJPEG(chemin string, t PhotoType) ([]byte, int, int, error) {
+	donnees, err := os.ReadFile(chemin)
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("ad: lecture de %s: %w", chemin, err)
+	}
+	source, _, err := image.Decode(bytes.NewReader(donnees))
+	if err != nil {
+		return nil, 0, 0, fmt.Errorf("%w: %v", ErrPhotoIllisible, err)
+	}
+	largeur, hauteur := dimensionsCible(t)
+	recadree := recadrerRatio(source, largeur, hauteur)
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, recadree, &jpeg.Options{Quality: qualiteJPEG}); err != nil {
+		return nil, 0, 0, fmt.Errorf("ad: encodage JPEG: %w", err)
+	}
+	return buf.Bytes(), largeur, hauteur, nil
 }
 
 // recadrerRatio recadre l'image source au ratio cible (centré) puis

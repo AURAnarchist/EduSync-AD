@@ -107,6 +107,11 @@ Commandes :
   exchange online-script   Script Exchange Online (app-only)
   exchange policy-script   Script de politique d'adresses (on-prem)
   exchange report          Rapport CSV des adresses
+  m365 config              Affiche/enregistre la configuration Microsoft 365
+  m365 user-plans          Prépare les comptes cloud depuis des comptes AD
+  m365 group-plans         Prépare les groupes Entra depuis des groupes AD
+  m365 photo-mapping       Associe les photos d'identité aux comptes cloud
+  m365 hybrid              Check-list d'identité hybride (PHS/ADFS/PTA)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -171,6 +176,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdRDS(args[1:], stdout, stderr)
 	case "exchange":
 		return cmdExchange(args[1:], stdout, stderr)
+	case "m365":
+		return cmdM365(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

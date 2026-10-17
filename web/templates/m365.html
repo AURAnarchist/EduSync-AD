@@ -1,0 +1,114 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "m365.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "m365.sous_titre"}}</p>
+  </div>
+
+  <!-- 1. Configuration (app registration) -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "m365.config_titre"}}</h2>
+    <p class="mt-1 text-xs text-slate-500">{{tr .Langue "m365.config_aide"}}</p>
+    <form method="post" action="/app/m365/config"
+          hx-post="/app/m365/config" hx-target="#m365-config-result" hx-swap="innerHTML"
+          class="mt-4 grid gap-3 sm:grid-cols-2">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "m365.tenant_id"}}</span>
+        <input name="tenant_id" type="text" value="{{.ConfigM365.TenantID}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "m365.client_id"}}</span>
+        <input name="client_id" type="text" value="{{.ConfigM365.ClientID}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "m365.auth_mode"}}</span>
+        <select name="auth_mode" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <option value="secret" {{if eq .ConfigM365.AuthMode "secret"}}selected{{end}}>{{tr .Langue "m365.auth_secret"}}</option>
+          <option value="certificate" {{if eq .ConfigM365.AuthMode "certificate"}}selected{{end}}>{{tr .Langue "m365.auth_certificate"}}</option>
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "m365.usage_location"}}</span>
+        <input name="usage_location" type="text" maxlength="2" value="{{.ConfigM365.UsageLocation}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm sm:col-span-2">
+        <span class="text-slate-500">{{tr .Langue "m365.client_secret"}}</span>
+        <input name="client_secret" type="password" autocomplete="new-password"
+               placeholder="{{if .ConfigM365.SecretDefini}}{{tr .Langue "m365.secret_defini"}}{{else}}{{tr .Langue "m365.secret_absent"}}{{end}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm sm:col-span-2">
+        <span class="text-slate-500">{{tr .Langue "m365.certificate_path"}}</span>
+        <input name="certificate_path" type="text" value="{{.ConfigM365.CertificatePath}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <div class="sm:col-span-2">
+        <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "m365.enregistrer"}}
+        </button>
+      </div>
+    </form>
+    <div id="m365-config-result" class="mt-4"></div>
+  </div>
+
+  <!-- 2. Comptes cloud -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "m365.comptes_titre"}}</h2>
+    <p class="mt-1 text-xs text-slate-500">{{tr .Langue "m365.comptes_aide"}}</p>
+    <form class="mt-4 grid gap-3">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "m365.domain"}}</span>
+        <input name="domain" type="text" placeholder="lycee.onmicrosoft.com"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "m365.comptes"}}</span>
+        <textarea name="comptes" rows="6"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-800"></textarea>
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "m365.existing_upns"}}</span>
+        <textarea name="existing_upns" rows="3"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-800"></textarea>
+      </label>
+      <div>
+        <button type="submit" formaction="/app/m365/user-plans" hx-post="/app/m365/user-plans" hx-target="#m365-plans-result"
+                class="rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600">
+          {{tr .Langue "m365.voir_plans"}}
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- 3. Groupes et Teams -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "m365.groupes_titre"}}</h2>
+    <p class="mt-1 text-xs text-slate-500">{{tr .Langue "m365.groupes_aide"}}</p>
+    <form class="mt-4 grid gap-3">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "m365.kind"}}</span>
+        <select name="kind" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <option value="m365">{{tr .Langue "m365.kind_m365"}}</option>
+          <option value="distribution">{{tr .Langue "m365.kind_distribution"}}</option>
+          <option value="security">{{tr .Langue "m365.kind_security"}}</option>
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "m365.groupes"}}</span>
+        <textarea name="groupes" rows="6"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-800"></textarea>
+      </label>
+      <div>
+        <button type="submit" formaction="/app/m365/group-plans" hx-post="/app/m365/group-plans" hx-target="#m365-plans-result"
+                class="rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600">
+          {{tr .Langue "m365.voir_plans"}}
+        </button>
+      </div>
+    </form>
+    <div id="m365-plans-result" class="mt-4"></div>
+  </div>
+</div>
+{{end}}

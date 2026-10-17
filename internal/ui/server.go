@@ -36,6 +36,8 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/classspaces"
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/exchange"
+	"github.com/estemobs/EduSync-AD/internal/graph"
+	"github.com/estemobs/EduSync-AD/internal/m365"
 	"github.com/estemobs/EduSync-AD/internal/models"
 	"github.com/estemobs/EduSync-AD/internal/progress"
 	"github.com/estemobs/EduSync-AD/internal/rds"
@@ -164,6 +166,9 @@ type PageData struct {
 
 	// Microsoft Exchange (M20)
 	ConfigExchange exchange.Config
+
+	// Microsoft 365 / Entra ID (M19)
+	ConfigM365 ConfigM365UI
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -558,6 +563,12 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/exchange/onprem-script", s.requireAuthSession(s.exchangeOnpremScript))
 	mux.HandleFunc("POST /app/exchange/online-script", s.requireAuthSession(s.exchangeOnlineScript))
 	mux.HandleFunc("POST /app/exchange/policy-script", s.requireAuthSession(s.exchangePolicyScript))
+
+	// Microsoft 365 / Entra ID (M19)
+	mux.HandleFunc("GET /app/m365", s.requireAuthSession(s.pageM365))
+	mux.HandleFunc("POST /app/m365/config", s.requireAuthSession(s.m365ConfigForm))
+	mux.HandleFunc("POST /app/m365/user-plans", s.requireAuthSession(s.m365UserPlans))
+	mux.HandleFunc("POST /app/m365/group-plans", s.requireAuthSession(s.m365GroupPlans))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -4053,6 +4064,202 @@ func (s *Server) exchangeScriptFragment(w http.ResponseWriter, langue, script st
 	b.WriteString(`<pre class="mt-3 overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">`)
 	b.WriteString(html.EscapeString(script))
 	b.WriteString(`</pre></div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Microsoft 365 / Entra ID (M19) ──────────────────────────────────────
+
+// ConfigM365UI expose la configuration Microsoft 365 lisible par le gabarit :
+// le secret (même chiffré) n'y figure jamais.
+type ConfigM365UI struct {
+	TenantID        string
+	ClientID        string
+	AuthMode        string
+	CertificatePath string
+	UsageLocation   string
+	SecretDefini    bool
+}
+
+// dossierM365 retourne le dossier de configuration Microsoft 365.
+func (s *Server) dossierM365() string {
+	if s.opts.ConfigPath != "" {
+		return filepath.Dir(s.opts.ConfigPath)
+	}
+	if dir, err := graph.DossierConfig(); err == nil && dir != "" {
+		return dir
+	}
+	return "."
+}
+
+// cheminM365 retourne le chemin du fichier m365.json partagé avec Python.
+func (s *Server) cheminM365() string {
+	return filepath.Join(s.dossierM365(), graph.FichierConfig)
+}
+
+func (s *Server) pageM365(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "m365.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	cfg := graph.ChargerConfig(s.cheminM365())
+	d.ConfigM365 = ConfigM365UI{
+		TenantID:        cfg.TenantID,
+		ClientID:        cfg.ClientID,
+		AuthMode:        cfg.AuthMode,
+		CertificatePath: cfg.CertificatePath,
+		UsageLocation:   cfg.UsageLocation,
+		SecretDefini:    cfg.ClientSecret != "",
+	}
+	s.rendre(w, http.StatusOK, "m365.html", d)
+}
+
+// m365ConfigDepuisForm applique le formulaire à une configuration de base (le
+// secret n'est remplacé que si le champ est renseigné : il n'est jamais
+// réaffiché dans le gabarit).
+func m365ConfigDepuisForm(r *http.Request, base graph.Config) graph.Config {
+	def := graph.ConfigParDefaut()
+	base.TenantID = strings.TrimSpace(r.FormValue("tenant_id"))
+	base.ClientID = strings.TrimSpace(r.FormValue("client_id"))
+	base.AuthMode = valeurFormulaireOu(r.FormValue("auth_mode"), def.AuthMode)
+	base.CertificatePath = strings.TrimSpace(r.FormValue("certificate_path"))
+	base.UsageLocation = valeurFormulaireOu(r.FormValue("usage_location"), def.UsageLocation)
+	if secret := strings.TrimSpace(r.FormValue("client_secret")); secret != "" {
+		base.ClientSecret = secret
+	}
+	return base
+}
+
+// m365ConfigForm enregistre la configuration Microsoft 365.
+func (s *Server) m365ConfigForm(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	cfg := m365ConfigDepuisForm(r, graph.ChargerConfig(s.cheminM365()))
+	if err := graph.SauvegarderConfig(s.cheminM365(), cfg); err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	if s.journal != nil {
+		entree := nouvelleEntree("m365_config", cfg.TenantID, "succes",
+			fmt.Sprintf("Mode d'auth: %s", cfg.AuthMode))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+	s.m365Message(w, langue, Tr(langue, "m365.config_enregistree"), false)
+}
+
+// lignesFormulaire découpe une zone de texte en lignes, chaque ligne en champs
+// séparés par « ; » (espaces retirés, lignes vides ignorées).
+func lignesFormulaire(valeur string) [][]string {
+	var resultat [][]string
+	for _, ligne := range strings.Split(valeur, "\n") {
+		ligne = strings.TrimSpace(ligne)
+		if ligne == "" {
+			continue
+		}
+		champs := strings.Split(ligne, ";")
+		for i := range champs {
+			champs[i] = strings.TrimSpace(champs[i])
+		}
+		resultat = append(resultat, champs)
+	}
+	return resultat
+}
+
+// m365UserPlans prépare les comptes cloud depuis les comptes AD saisis.
+func (s *Server) m365UserPlans(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	var comptes []m365.CompteAD
+	for _, champs := range lignesFormulaire(r.FormValue("comptes")) {
+		compte := m365.CompteAD{SAM: champs[0]}
+		if len(champs) > 1 {
+			compte.CN = champs[1]
+		}
+		comptes = append(comptes, compte)
+	}
+	if len(comptes) == 0 {
+		s.m365Message(w, langue, Tr(langue, "m365.comptes_obligatoires"), true)
+		return
+	}
+	var existants []string
+	for _, champs := range lignesFormulaire(r.FormValue("existing_upns")) {
+		existants = append(existants, champs[0])
+	}
+	plans := m365.ConstruirePlansUtilisateurs(comptes, strings.TrimSpace(r.FormValue("domain")), existants)
+	libelles := make([]string, 0, len(plans))
+	for _, plan := range plans {
+		libelles = append(libelles, plan.Label())
+	}
+	s.m365PlansFragment(w, langue, libelles)
+}
+
+// m365GroupPlans prépare les groupes Entra depuis les groupes AD saisis.
+func (s *Server) m365GroupPlans(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	kind := strings.TrimSpace(r.FormValue("kind"))
+	if _, ok := m365.TypesGroupe[kind]; !ok {
+		s.m365Message(w, langue, Tr(langue, "m365.type_inconnu"), true)
+		return
+	}
+	var specs []m365.SpecGroupe
+	for _, champs := range lignesFormulaire(r.FormValue("groupes")) {
+		spec := m365.SpecGroupe{Nom: champs[0]}
+		if len(champs) > 1 {
+			spec.Membres = append(spec.Membres, champs[1:]...)
+		}
+		specs = append(specs, spec)
+	}
+	if len(specs) == 0 {
+		s.m365Message(w, langue, Tr(langue, "m365.groupes_obligatoires"), true)
+		return
+	}
+	plans := m365.ConstruirePlansGroupes(specs, kind, nil)
+	libelles := make([]string, 0, len(plans))
+	for _, plan := range plans {
+		libelles = append(libelles, plan.Label())
+	}
+	s.m365PlansFragment(w, langue, libelles)
+}
+
+// m365Message rend un message simple (succès ou erreur).
+func (s *Server) m365Message(w http.ResponseWriter, langue, message string, erreur bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	classe := "text-emerald-600 dark:text-emerald-400"
+	if erreur {
+		classe = "text-rose-600 dark:text-rose-400"
+	}
+	fmt.Fprintf(w, `<p class="text-sm %s">%s</p>`, classe, html.EscapeString(message))
+}
+
+// m365PlansFragment rend une liste de plans (comptes ou groupes).
+func (s *Server) m365PlansFragment(w http.ResponseWriter, langue string, libelles []string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-lg border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900">`)
+	title := Tr(langue, "m365.plans")
+	fmt.Fprintf(&b, `<p class="font-semibold">%d %s</p>`, len(libelles), html.EscapeString(title))
+	if len(libelles) == 0 {
+		b.WriteString(`<p class="mt-2 text-slate-500">` + html.EscapeString(Tr(langue, "m365.aucun")) + `</p>`)
+	} else {
+		b.WriteString(`<ul class="mt-2 space-y-1 font-mono text-xs">`)
+		for _, libelle := range libelles {
+			b.WriteString(`<li>` + html.EscapeString(libelle) + `</li>`)
+		}
+		b.WriteString(`</ul>`)
+	}
+	b.WriteString(`</div>`)
 	w.Write([]byte(b.String()))
 }
 
