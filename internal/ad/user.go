@@ -18,6 +18,7 @@ type User struct {
 	DN                string
 	SAMAccountName    string
 	UserPrincipalName string
+	CN                string
 	DisplayName       string
 	GivenName         string
 	SN                string
@@ -144,7 +145,10 @@ func (p *Pool) UserCreate(ctx context.Context, params UserCreateParams) (*User, 
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}
-	if err := p.verifier("create_user", fmt.Sprintf("CN=%s,%s", params.DisplayName, params.OU), params.OU); err != nil {
+	// Le RDN est échappé comme `ldap3.utils.dn.escape_rdn` côté Python : un nom
+	// contenant « , » ou « + » ne doit pas couper le DN en deux.
+	dn := fmt.Sprintf("CN=%s,%s", EchapperRDN(params.DisplayName), params.OU)
+	if err := p.verifier("create_user", dn, params.OU); err != nil {
 		return nil, err
 	}
 	// L'ajout aux groupes relève de manage_groups (comme Python, où chaque
@@ -168,8 +172,6 @@ func (p *Pool) UserCreate(ctx context.Context, params UserCreateParams) (*User, 
 		return nil, err
 	}
 	defer p.Put(conn)
-
-	dn := fmt.Sprintf("CN=%s,%s", params.DisplayName, params.OU)
 
 	// Attributs de l'utilisateur
 	attrs := map[string][]string{
@@ -262,6 +264,7 @@ func entryToUser(e *ldap.Entry) (*User, error) {
 		DN:                e.DN,
 		SAMAccountName:    e.GetAttributeValue("sAMAccountName"),
 		UserPrincipalName: e.GetAttributeValue("userPrincipalName"),
+		CN:                e.GetAttributeValue("cn"),
 		DisplayName:       e.GetAttributeValue("displayName"),
 		GivenName:         e.GetAttributeValue("givenName"),
 		SN:                e.GetAttributeValue("sn"),

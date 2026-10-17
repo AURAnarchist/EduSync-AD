@@ -43,6 +43,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/mailer"
 	"github.com/estemobs/EduSync-AD/internal/models"
 	"github.com/estemobs/EduSync-AD/internal/multisite"
+	"github.com/estemobs/EduSync-AD/internal/portal"
 	"github.com/estemobs/EduSync-AD/internal/progress"
 	"github.com/estemobs/EduSync-AD/internal/rbac"
 	"github.com/estemobs/EduSync-AD/internal/rds"
@@ -194,6 +195,14 @@ type PageData struct {
 
 	// Modèles de groupes (M23)
 	ModelesGT []grouptemplates.ModeleGroupe
+
+	// Portail auto-service (M27)
+	PortailConfig       portal.Config
+	PortailDemandes     []portal.Demande
+	PortailEnEcoute     bool
+	PortailURL          string
+	PortailCheminConfig string
+	PortailCheminBase   string
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -347,6 +356,10 @@ type Server struct {
 	sessions map[string]*session
 	adPools  map[string]*ad.Pool // clé = sessionID
 	progress *progress.Tracker   // suivi des opérations de masse
+
+	// Serveur HTTP du portail auto-service (M27), partagé par l'application.
+	portailMu sync.Mutex
+	portail   *portailEnCours
 }
 
 // New prépare le serveur d'interface (templates, assets, journal).
@@ -456,6 +469,7 @@ func New(opts Options) (*Server, error) {
 
 // Close libère la base du journal.
 func (s *Server) Close() error {
+	s.fermerPortail()
 	if s.journal == nil {
 		return nil
 	}
@@ -625,6 +639,15 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/group-templates/dupliquer", s.requireAuthSession(s.groupTemplatesDupliquer))
 	mux.HandleFunc("POST /app/group-templates/supprimer", s.requireAuthSession(s.groupTemplatesSupprimer))
 	mux.HandleFunc("GET /app/group-templates/export", s.requireAuthSession(s.groupTemplatesExporter))
+
+	// Portail auto-service (M27)
+	mux.HandleFunc("GET /app/portal", s.requireAuthSession(s.pagePortail))
+	mux.HandleFunc("POST /app/portal/config", s.requireAuthSession(s.portailConfigForm))
+	mux.HandleFunc("POST /app/portal/demarrer", s.requireAuthSession(s.portailDemarrer))
+	mux.HandleFunc("POST /app/portal/arreter", s.requireAuthSession(s.portailArreter))
+	mux.HandleFunc("POST /app/portal/approuver", s.requireAuthSession(s.portailApprouver))
+	mux.HandleFunc("POST /app/portal/refuser", s.requireAuthSession(s.portailRefuser))
+	mux.HandleFunc("GET /app/portal/etat", s.requireAuthSession(s.portailEtat))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux

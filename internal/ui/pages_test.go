@@ -15,6 +15,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/label"
 	"github.com/estemobs/EduSync-AD/internal/mailer"
 	"github.com/estemobs/EduSync-AD/internal/models"
+	"github.com/estemobs/EduSync-AD/internal/portal"
 	"github.com/estemobs/EduSync-AD/web"
 )
 
@@ -156,6 +157,20 @@ func donneesTestCompletes() PageData {
 			Host: "smtp.exemple.fr", Port: 587, Username: "edusync", Password: "secret",
 			UseTLS: true, FromAddr: "edusync@exemple.fr", FromName: "EduSync AD", Timeout: 20,
 		},
+		PortailConfig: portal.Config{
+			Actif: true, Hote: "127.0.0.1", Port: 8787, CodeMinutes: 10,
+			TentativesMax: 5, EnvoisMax: 3, Politique: portal.ProfilEleve,
+			OUAccueil: "OU=Eleves,DC=X", NotificationMail: true, Titre: "Portail du collège",
+		},
+		PortailDemandes: []portal.Demande{{
+			ID: "abc12345", Profil: portal.ProfilEleve, Prenom: "Léa", Nom: "Martin",
+			Mail: "lea.martin@x", Classe: "6eA", Motif: "arrivée",
+			Statut: portal.StatutEnAttente, CreatedAt: maintenant,
+		}},
+		PortailEnEcoute:     true,
+		PortailURL:          "http://127.0.0.1:8787",
+		PortailCheminConfig: "/tmp/portail.json",
+		PortailCheminBase:   "/tmp/portail.db",
 	}
 }
 

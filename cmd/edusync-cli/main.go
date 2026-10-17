@@ -140,6 +140,11 @@ Commandes :
   group-templates import   Importe un modèle (JSON ou XML)
   group-templates builtins Restaure/écrit les modèles intégrés
   group-templates plan     Calcule OU + groupes + artefacts (sans écriture AD)
+  portal config            Affiche/enregistre les réglages du portail (M27)
+  portal requests          Liste les demandes de création de compte
+  portal status            État du portail (JSON)
+  portal refuse            Refuse une demande de création de compte
+  portal approve           Valide une demande (crée le compte dans l'AD)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -216,6 +221,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdLabel(args[1:], stdout, stderr)
 	case "group-templates":
 		return cmdGroupTemplates(args[1:], stdout, stderr)
+	case "portal":
+		return cmdPortal(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

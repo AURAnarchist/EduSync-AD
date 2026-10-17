@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/estemobs/EduSync-AD/internal/ad"
 	"github.com/estemobs/EduSync-AD/internal/classspaces"
 	"github.com/estemobs/EduSync-AD/internal/config"
 )
@@ -412,28 +413,9 @@ func Instancier(
 }
 
 // EchapperRDN échappe un nom relatif de DN comme `ldap3.utils.dn.escape_rdn`.
+// L'implémentation vit dans le paquet ad (partagée avec le portail M27).
 func EchapperRDN(valeur string) string {
-	if valeur == "" {
-		return valeur
-	}
-	runes := []rune(valeur)
-	var b strings.Builder
-	for index, r := range runes {
-		besoin := false
-		switch r {
-		case ',', '+', '"', '\\', ';', '<', '>', '=', 0x00:
-			besoin = true
-		case '#':
-			besoin = index == 0
-		case ' ':
-			besoin = index == 0 || index == len(runes)-1
-		}
-		if besoin {
-			b.WriteRune('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
+	return ad.EchapperRDN(valeur)
 }
 
 // deployerScript écrit un script de connexion dans un répertoire (convention
