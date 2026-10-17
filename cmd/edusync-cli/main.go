@@ -160,6 +160,11 @@ Commandes :
   api webhooks test        Envoie un événement de test à un webhook
   api webhooks events      Liste les événements disponibles
   api serve                Démarre le serveur de l'API (Ctrl-C pour arrêter)
+  assistant anomalies      Détecte les anomalies de l'annuaire (M29, AD requis)
+  assistant cleanup        Suggère le nettoyage de fin d'année (M29, AD requis)
+  assistant smart-id       Génère un identifiant unique (M29)
+  assistant security       Analyse de sécurité (recommandations + score, M29)
+  assistant journal        Analyse le journal d'actions (M29)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -240,6 +245,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdPortal(args[1:], stdout, stderr)
 	case "api":
 		return cmdAPI(args[1:], stdout, stderr)
+	case "assistant":
+		return cmdAssistant(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

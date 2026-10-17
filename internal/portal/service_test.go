@@ -385,17 +385,17 @@ func TestApprouverDemande(t *testing.T) {
 		compte.Famille != "Martin" || compte.Prenom != "Léa" {
 		t.Fatalf("compte = %+v", compte)
 	}
-	if compte.Identifiant != "prenom.nom" {
+	if compte.Identifiant != "lea.martin" {
 		t.Fatalf("identifiant = %q", compte.Identifiant)
 	}
-	if compte.UPN != "prenom.nom@college.fr" {
+	if compte.UPN != "lea.martin@college.fr" {
 		t.Fatalf("UPN = %q", compte.UPN)
 	}
 	// Adresse reconstruite depuis format_mail et le domaine.
 	if compte.Mail != "lea.martin@college.fr" {
 		t.Fatalf("mail = %q", compte.Mail)
 	}
-	if infos["identifiant"] != "prenom.nom" || infos["mot_de_passe"] == "" ||
+	if infos["identifiant"] != "lea.martin" || infos["mot_de_passe"] == "" ||
 		infos["dn"] != "cn=Léa Martin,OU=Eleves,DC=college,DC=fr" {
 		t.Fatalf("infos = %+v", infos)
 	}

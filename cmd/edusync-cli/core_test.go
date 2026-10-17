@@ -36,7 +36,7 @@ func TestUsersImportSimulate(t *testing.T) {
 	if !strings.Contains(out, "3 valides") {
 		t.Errorf("attendu 3 valides, sortie: %s", out)
 	}
-	if !strings.Contains(out, "prenom.nom002") {
+	if !strings.Contains(out, "lea.martin2") {
 		t.Errorf("doublon non résolu, sortie: %s", out)
 	}
 }

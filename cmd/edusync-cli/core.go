@@ -162,11 +162,18 @@ func cmdUsersImportSimulate(args []string, stdout io.Writer) error {
 			continue
 		}
 
-		// Génération identifiant
-		ident := cfg.GenerateIdentifiant(prenom, nom, at)
-		if containsStr(usedIdents, ident) {
-			res, _ := cfg.ResolveDuplicate(ident, usedIdents, cfg.RegleDoublons)
-			ident = res
+		// Génération identifiant + résolution des doublons du lot (même moteur
+		// que la version Python).
+		existant := make(map[string]bool, len(usedIdents))
+		for _, precedent := range usedIdents {
+			existant[precedent] = true
+		}
+		ident, _, errIdent := cfg.MoteurIdentifiants(at).GenererUnique(prenom, nom, existant)
+		if errIdent != nil {
+			l.Erreur = errIdent.Error()
+			lignes = append(lignes, l)
+			erreurs++
+			continue
 		}
 		usedIdents = append(usedIdents, ident)
 		l.Identifiant = ident

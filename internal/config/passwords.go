@@ -123,9 +123,9 @@ func RendreMotifMotDePasse(motif, prenom, nom string, annee int) string {
 // RenderTemplate rend un gabarit d'identifiant ou d'adresse de messagerie :
 // les variables {P} {N} {pN} {nN} {ANNEE} {AN} sont remplacées, puis le
 // résultat est nettoyé (minuscules, sans accents ni caractères étrangers),
-// comme `identifiers.render_template` côté Python.
+// exactement comme `identifiers.render_template` côté Python.
 func RenderTemplate(gabarit, prenom, nom string, annee int) string {
-	return CleanToken(RendreMotifMotDePasse(gabarit, prenom, nom, annee))
+	return rendreTemplate(gabarit, prenom, nom, annee, "", 0)
 }
 
 // tronquerRunes garde les n premiers caractères (équivalent de `s[:n]` Python).

@@ -1,0 +1,99 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "assistant.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "assistant.sous_titre"}}</p>
+  </div>
+
+  {{if .Erreurs}}
+  <div class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
+    <ul class="list-disc pl-5">
+      {{range .Erreurs}}<li>{{.}}</li>{{end}}
+    </ul>
+  </div>
+  {{end}}
+
+  {{if and .AssistantAvertissement (not .AssistantADDisponible)}}
+  <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+    {{.AssistantAvertissement}}
+  </div>
+  {{end}}
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "assistant.identifiant_titre"}}</h2>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "assistant.identifiant_aide"}}</p>
+    <form class="mt-3 grid gap-3 sm:grid-cols-2"
+          hx-post="/app/assistant/identifiant" hx-target="#assistant-identifiant" hx-swap="innerHTML">
+      <label class="text-sm">
+        <span class="block text-slate-500">{{tr .Langue "assistant.prenom"}}</span>
+        <input name="prenom" required
+               class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="block text-slate-500">{{tr .Langue "assistant.nom"}}</span>
+        <input name="nom" required
+               class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="block text-slate-500">{{tr .Langue "assistant.format"}}</span>
+        <select name="format"
+                class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <option value="">{{tr .Langue "assistant.format_defaut"}}</option>
+          {{range .AssistantFormats}}<option value="{{.}}">{{.}}</option>{{end}}
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="block text-slate-500">{{tr .Langue "assistant.existants"}}</span>
+        <input name="existants" placeholder="{{tr .Langue "assistant.existants_aide"}}"
+               class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <div class="sm:col-span-2">
+        <button type="submit"
+                class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "assistant.generer"}}
+        </button>
+      </div>
+    </form>
+    <div id="assistant-identifiant" class="mt-3"></div>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "assistant.analyses_titre"}}</h2>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "assistant.analyses_aide"}}</p>
+    <div class="mt-3 flex flex-wrap gap-2">
+      <button type="button" {{if not .AssistantADDisponible}}disabled{{end}}
+              hx-post="/app/assistant/anomalies" hx-target="#assistant-resultat" hx-swap="innerHTML"
+              class="rounded-md bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40 dark:bg-slate-700">
+        {{tr .Langue "assistant.detecter_anomalies"}}
+      </button>
+      <button type="button" {{if not .AssistantADDisponible}}disabled{{end}}
+              hx-post="/app/assistant/cleanup" hx-target="#assistant-resultat" hx-swap="innerHTML"
+              class="rounded-md bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-40 dark:bg-slate-700">
+        {{tr .Langue "assistant.suggerer_nettoyage"}}
+      </button>
+      <button type="button"
+              hx-post="/app/assistant/securite" hx-target="#assistant-resultat" hx-swap="innerHTML"
+              class="rounded-md bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700 dark:bg-slate-700">
+        {{tr .Langue "assistant.analyser_securite"}}
+      </button>
+      <button type="button"
+              hx-post="/app/assistant/journal" hx-target="#assistant-resultat" hx-swap="innerHTML"
+              class="rounded-md bg-slate-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-slate-700 dark:bg-slate-700">
+        {{tr .Langue "assistant.analyser_journal"}}
+      </button>
+    </div>
+    <div id="assistant-resultat" class="mt-4"></div>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "assistant.aide_titre"}}</h2>
+    <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+      <li>{{tr .Langue "assistant.aide_anomalies"}}</li>
+      <li>{{tr .Langue "assistant.aide_cleanup"}}</li>
+      <li>{{tr .Langue "assistant.aide_securite"}}</li>
+      <li>{{tr .Langue "assistant.aide_journal"}}</li>
+    </ul>
+    <p class="mt-2 text-xs text-slate-500">{{tr .Langue "assistant.lecture_seule"}}</p>
+  </div>
+</div>
+{{end}}

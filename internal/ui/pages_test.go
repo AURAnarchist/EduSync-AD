@@ -212,6 +212,11 @@ func donneesTestCompletes() PageData {
 			{Methode: "GET", Motif: "/api/v1/webhooks/{webhook_id}"},
 			{Methode: "GET", Motif: "/api/v1/openapi.json", Publique: true},
 		},
+
+		// Assistant IA (M29)
+		AssistantFormats:       []string{"prenom.nom", "p.nom", "prenomNom"},
+		AssistantADDisponible:  true,
+		AssistantAvertissement: "avertissement de test",
 	}
 }
 

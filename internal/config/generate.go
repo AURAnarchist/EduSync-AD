@@ -1,99 +1,94 @@
-// Package config provides helpers for generating identifiers, passwords, and
-// resolving duplicates according to the configured policies.
+// Ce fichier fournit les helpers de génération d'identifiants, de mots de
+// passe et d'adresses mail, ainsi que la résolution des doublons. Le moteur
+// d'identifiants lui-même (formats prédéfinis, modèles libres, règles de
+// doublons) est dans `identifiers.go`.
 package config
 
 import (
 	"crypto/rand"
 	"math/big"
 	"regexp"
+	"strconv"
 	"strings"
-	"unicode"
+	"time"
 
 	"github.com/estemobs/EduSync-AD/internal/models"
 )
 
-// GenerateIdentifiant crée un identifiant selon le format configuré.
-// format peut contenir : {P} = prénom, {N} = nom, {p} = première lettre prénom, {n} = première lettre nom.
-func (c *AppConfig) GenerateIdentifiant(prenom, nom string, typeCompte models.AccountType) string {
+// MoteurIdentifiants retourne le moteur d'identifiants configuré pour un type
+// de compte : format élève ou personnel, règle de doublons, règle de prénom
+// composé et année courante.
+func (c *AppConfig) MoteurIdentifiants(typeCompte models.AccountType) MoteurIdentifiants {
 	format := c.IdentifiantFormatEleve
 	if typeCompte == models.AccountPersonnel {
 		format = c.IdentifiantFormatPersonnel
 	}
-
-	// Normaliser : minuscules, pas d'accents, pas d'espaces
-	p := normalizeIdentifiantPart(prenom, c.ReglePrenomCompose)
-	n := normalizeIdentifiantPart(nom, c.ReglePrenomCompose)
-
-	// Première lettre
-	p1 := ""
-	if len(p) > 0 {
-		p1 = string(p[0])
+	return MoteurIdentifiants{
+		Format:             format,
+		RegleDoublon:       c.RegleDoublons,
+		ReglePrenomCompose: c.ReglePrenomCompose,
+		Annee:              time.Now().Year(),
 	}
-	n1 := ""
-	if len(n) > 0 {
-		n1 = string(n[0])
-	}
-
-	result := strings.ReplaceAll(format, "{P}", p)
-	result = strings.ReplaceAll(result, "{N}", n)
-	result = strings.ReplaceAll(result, "{p}", p1)
-	result = strings.ReplaceAll(result, "{n}", n1)
-
-	return strings.ToLower(result)
 }
 
-// normalizeIdentifiantPart nettoie une partie de l'identifiant (prénom ou nom).
-func normalizeIdentifiantPart(s string, rule models.PrenomComposeRule) string {
-	// Règle prénom composé
-	parts := strings.FieldsFunc(s, func(r rune) bool { return r == '-' || r == ' ' })
-	var result string
-	switch rule {
-	case models.PrenomPremierPrenom:
-		if len(parts) > 0 {
-			result = parts[0]
-		}
-	case models.PrenomConcatenation:
-		for _, part := range parts {
-			result += part
-		}
-	case models.PrenomTroncature:
-		for _, part := range parts {
-			if len(part) > 0 {
-				result += string(part[0])
-			}
-		}
-	default:
-		if len(parts) > 0 {
-			result = parts[0]
-		}
+// GenerateIdentifiant crée un identifiant selon le format configuré, sans
+// résolution de doublon. Pour tenir compte des identifiants déjà pris, utiliser
+// `MoteurIdentifiants(...).GenererUnique(...)`.
+func (c *AppConfig) GenerateIdentifiant(prenom, nom string, typeCompte models.AccountType) string {
+	return c.MoteurIdentifiants(typeCompte).IdentifiantBase(prenom, nom)
+}
+
+// GenerateEmail génère une adresse mail selon `format_mail` : la partie locale
+// passe par le même moteur de modèles que les identifiants ({P}, {N}, {p1},
+// {n1}, {AN}, {ANNEE}), le prénom composé étant d'abord réduit par la règle
+// configurée.
+func (c *AppConfig) GenerateEmail(prenom, nom, domaine string) string {
+	modele := c.FormatMail
+	if modele == "" {
+		modele = "{P}.{N}"
+	}
+	prenomNet := CleanToken(AppliquerReglePrenomCompose(prenom, c.ReglePrenomCompose))
+	nomNet := CleanToken(nom)
+	locale := RenderTemplate(modele, prenomNet, nomNet, time.Now().Year())
+	return locale + "@" + domaine
+}
+
+// ResolveDuplicate résout un conflit sur une valeur déjà calculée (identifiant
+// ou partie locale d'une adresse mail) selon la règle configurée.
+//
+// La limite de 20 caractères du sAMAccountName ne s'applique pas ici : elle est
+// appliquée en amont par le moteur d'identifiants, et les adresses mail n'y
+// sont pas soumises. Les règles « lettres » retombent sur un suffixe numérique,
+// faute de prénom/nom pour allonger un préfixe (même repli que Python).
+func (c *AppConfig) ResolveDuplicate(base string, existants []string, regle models.DoublonRule) (string, bool) {
+	index := make(map[string]bool, len(existants))
+	for _, valeur := range existants {
+		index[strings.ToLower(valeur)] = true
+	}
+	if !index[strings.ToLower(base)] {
+		return base, false
 	}
 
-	// Supprimer accents et caractères spéciaux, garder alphanumérique
-	var b strings.Builder
-	for _, r := range result {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			// Mapping basique des accents
-			switch r {
-			case 'à', 'â', 'ä', 'á', 'ã', 'å':
-				b.WriteRune('a')
-			case 'é', 'è', 'ê', 'ë':
-				b.WriteRune('e')
-			case 'î', 'ï', 'í', 'ì':
-				b.WriteRune('i')
-			case 'ô', 'ö', 'ò', 'ó', 'õ':
-				b.WriteRune('o')
-			case 'ù', 'û', 'ü', 'ú':
-				b.WriteRune('u')
-			case 'ç':
-				b.WriteRune('c')
-			case 'ñ':
-				b.WriteRune('n')
-			default:
-				b.WriteRune(unicode.ToLower(r))
-			}
+	candidats := make([]string, 0, 1000)
+	if regle == models.DoublonAnneeSuffixe {
+		candidats = append(candidats, base+strconv.Itoa(time.Now().Year()))
+	}
+	for n := 2; n < 1000; n++ {
+		switch regle {
+		case models.DoublonPrefixeNumerique:
+			candidats = append(candidats, strconv.Itoa(n)+"."+base)
+		case models.DoublonSuffixeNumeriqueSep:
+			candidats = append(candidats, base+"-"+strconv.Itoa(n))
+		default:
+			candidats = append(candidats, base+strconv.Itoa(n))
 		}
 	}
-	return b.String()
+	for _, candidat := range candidats {
+		if !index[strings.ToLower(candidat)] {
+			return candidat, true
+		}
+	}
+	return base, false
 }
 
 // GeneratePassword génère un mot de passe selon la politique.
@@ -163,95 +158,6 @@ func (c *AppConfig) GeneratePassword(policy models.PasswordPolicy) (string, erro
 	}
 
 	return string(pw), nil
-}
-
-// GenerateEmail génère une adresse mail selon le format configuré.
-func (c *AppConfig) GenerateEmail(prenom, nom, domaine string) string {
-	if domaine == "" {
-		domaine = "example.com" // fallback
-	}
-	format := c.FormatMail
-	if format == "" {
-		format = "{p}.{n}"
-	}
-
-	p := normalizeIdentifiantPart(prenom, c.ReglePrenomCompose)
-	n := normalizeIdentifiantPart(nom, c.ReglePrenomCompose)
-	p1 := ""
-	if len(p) > 0 {
-		p1 = string(p[0])
-	}
-	n1 := ""
-	if len(n) > 0 {
-		n1 = string(n[0])
-	}
-
-	result := strings.ReplaceAll(format, "{P}", p)
-	result = strings.ReplaceAll(result, "{N}", n)
-	result = strings.ReplaceAll(result, "{p}", p1)
-	result = strings.ReplaceAll(result, "{n}", n1)
-
-	return strings.ToLower(result) + "@" + domaine
-}
-
-// ResolveDuplicate résout un conflit d'identifiant selon la règle configurée.
-// Retourne l'identifiant résolu et un booléen indiquant s'il y a eu résolution.
-func (c *AppConfig) ResolveDuplicate(base string, existing []string, rule models.DoublonRule) (string, bool) {
-	if !contains(existing, base) {
-		return base, false
-	}
-
-	switch rule {
-	case models.DoublonSuffixeNumerique:
-		return resolveNumericSuffix(base, existing, false)
-	case models.DoublonSuffixeNumeriqueSep:
-		return resolveNumericSuffix(base, existing, true)
-	case models.DoublonPrefixeNumerique:
-		return resolveNumericPrefix(base, existing)
-	case models.DoublonLettresPrenom:
-		// Nécessite le prénom - pas implémenté ici sans contexte
-		return resolveNumericSuffix(base, existing, false)
-	case models.DoublonLettresNom:
-		return resolveNumericSuffix(base, existing, false)
-	case models.DoublonAnneeSuffixe:
-		// Nécessite l'année - pas implémenté ici sans contexte
-		return resolveNumericSuffix(base, existing, false)
-	default:
-		return resolveNumericSuffix(base, existing, false)
-	}
-}
-
-func resolveNumericSuffix(base string, existing []string, withSeparator bool) (string, bool) {
-	sep := ""
-	if withSeparator {
-		sep = "."
-	}
-	for i := 2; i < 1000; i++ {
-		candidate := base + sep + string(rune('0'+i/100)) + string(rune('0'+(i/10)%10)) + string(rune('0'+i%10))
-		if !contains(existing, candidate) {
-			return candidate, true
-		}
-	}
-	return base, false
-}
-
-func resolveNumericPrefix(base string, existing []string) (string, bool) {
-	for i := 2; i < 1000; i++ {
-		candidate := string(rune('0'+i/100)) + string(rune('0'+(i/10)%10)) + string(rune('0'+i%10)) + "." + base
-		if !contains(existing, candidate) {
-			return candidate, true
-		}
-	}
-	return base, false
-}
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
 }
 
 // SanitizeDNPart nettoie une chaîne pour être utilisée dans un DN (CN, OU, etc.).

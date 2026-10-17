@@ -220,6 +220,11 @@ type PageData struct {
 	APIPermissions      []api.PermissionLookup
 	APIRoutes           []api.Route
 	APIEvenements       []string
+
+	// Assistant IA (M29)
+	AssistantFormats       []string
+	AssistantADDisponible  bool
+	AssistantAvertissement string
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -682,6 +687,14 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/api/webhooks/ajouter", s.requireAuthSession(s.apiAjouterWebhook))
 	mux.HandleFunc("POST /app/api/webhooks/supprimer", s.requireAuthSession(s.apiSupprimerWebhook))
 	mux.HandleFunc("POST /app/api/webhooks/tester", s.requireAuthSession(s.apiTesterWebhook))
+
+	// Assistant IA (M29)
+	mux.HandleFunc("GET /app/assistant", s.requireAuthSession(s.pageAssistant))
+	mux.HandleFunc("POST /app/assistant/identifiant", s.requireAuthSession(s.assistantIdentifiant))
+	mux.HandleFunc("POST /app/assistant/anomalies", s.requireAuthSession(s.assistantAnomalies))
+	mux.HandleFunc("POST /app/assistant/cleanup", s.requireAuthSession(s.assistantCleanup))
+	mux.HandleFunc("POST /app/assistant/securite", s.requireAuthSession(s.assistantSecurite))
+	mux.HandleFunc("POST /app/assistant/journal", s.requireAuthSession(s.assistantJournal))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -1402,13 +1415,21 @@ func (s *Server) simulerCreationUsers(sess *session, pool *ad.Pool, rows []impor
 			continue
 		}
 
-		// Génération identifiant
-		gu.Identifiant = cfg.GenerateIdentifiant(row.Prenom, row.Nom, accountType)
-
-		// Résolution doublons CSV
-		if contains(usedIdents, gu.Identifiant) {
-			gu.Identifiant, gu.DoublonResolu = cfg.ResolveDuplicate(gu.Identifiant, usedIdents, cfg.RegleDoublons)
+		// Génération identifiant + résolution des doublons du lot (même
+		// moteur que la version Python : formats, règles de doublons, limite
+		// de 20 caractères du sAMAccountName).
+		existant := make(map[string]bool, len(usedIdents))
+		for _, ident := range usedIdents {
+			existant[ident] = true
 		}
+		identifiant, doublon, err := cfg.MoteurIdentifiants(accountType).
+			GenererUnique(row.Prenom, row.Nom, existant)
+		if err != nil {
+			gu.Erreur = err.Error()
+			simulated = append(simulated, gu)
+			continue
+		}
+		gu.Identifiant, gu.DoublonResolu = identifiant, doublon
 		usedIdents = append(usedIdents, gu.Identifiant)
 
 		// Vérification AD existant
