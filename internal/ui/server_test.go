@@ -13,6 +13,8 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/classspaces"
 	"github.com/estemobs/EduSync-AD/internal/config"
+	"github.com/estemobs/EduSync-AD/internal/label"
+	"github.com/estemobs/EduSync-AD/internal/mailer"
 	"github.com/estemobs/EduSync-AD/internal/multisite"
 	"github.com/estemobs/EduSync-AD/internal/progress"
 	"github.com/estemobs/EduSync-AD/internal/rbac"
@@ -1636,6 +1638,119 @@ func TestRBACSansSession(t *testing.T) {
 	s, _ := nouveauServeur(t)
 
 	w := demander(t, s, "GET", "/app/rbac", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
+
+// ─── Étiquettes avancées (M24) ───────────────────────────────────────────
+
+func TestLabelPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/label", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	for _, attendu := range []string{"badge_porteur", "etiquette_classe", "SMTP"} {
+		if !strings.Contains(corps, attendu) {
+			t.Errorf("page sans %q", attendu)
+		}
+	}
+}
+
+func TestLabelApercuProduitPDF(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/label/apercu", url.Values{
+		"modele": {"etiquette_classe"},
+		"nb":     {"6"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/pdf" {
+		t.Errorf("content-type = %q", ct)
+	}
+	if !strings.HasPrefix(w.Body.String(), "%PDF-") {
+		t.Error("aperçu non PDF")
+	}
+}
+
+func TestLabelTrombinoscopeProduitPDF(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/label/trombinoscope", url.Values{
+		"page":     {"A4"},
+		"colonnes": {"4"},
+		"titre":    {"3emeA"},
+		"nb":       {"9"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK || !strings.HasPrefix(w.Body.String(), "%PDF-") {
+		t.Fatalf("code = %d", w.Code)
+	}
+}
+
+func TestLabelMailEnregistre(t *testing.T) {
+	s, dir := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/label/mail", url.Values{
+		"host":      {"smtp.lycee.fr"},
+		"port":      {"587"},
+		"from":      {"edusync@lycee.fr"},
+		"from_name": {"EduSync AD"},
+		"username":  {"edusync"},
+		"password":  {"Secret-SMTP-123"},
+	}, entetes)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("code = %d, attendu 303", w.Code)
+	}
+	brut, err := os.ReadFile(filepath.Join(dir, mailer.NomFichier))
+	if err != nil {
+		t.Fatalf("fichier SMTP: %v", err)
+	}
+	if strings.Contains(string(brut), "Secret-SMTP-123") || !strings.Contains(string(brut), "password_token") {
+		t.Error("mot de passe non chiffré sur disque")
+	}
+}
+
+func TestLabelSupprimerModelePersonnalise(t *testing.T) {
+	s, dir := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	store := filepath.Join(dir, label.NomFichier)
+	modeles := label.ModelesIntegres()
+	perso := modeles[0].Clone()
+	perso.ID = "mon_modele"
+	perso.Nom = "Mon modèle"
+	modeles = append(modeles, perso)
+	if _, err := label.SauvegarderModeles(modeles, store); err != nil {
+		t.Fatal(err)
+	}
+
+	w := demander(t, s, "POST", "/app/label/supprimer", url.Values{"id": {"mon_modele"}},
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("code = %d, attendu 303", w.Code)
+	}
+	restants := label.ChargerModeles(store)
+	for _, m := range restants {
+		if m.ID == "mon_modele" {
+			t.Error("modèle personnalisé non supprimé")
+		}
+	}
+}
+
+func TestLabelSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/label", nil, nil)
 	if w.Code != http.StatusSeeOther {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}

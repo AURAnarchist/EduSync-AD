@@ -127,6 +127,10 @@ Commandes :
   rbac add                 Ajoute un délégué (rôle + portées OU/groupe)
   rbac remove              Supprime un délégué
   rbac policy              Résout la politique d'un opérateur
+  label templates          Liste les modèles d'étiquettes
+  label render             Génère une planche d'étiquettes PDF
+  label trombinoscope      Génère un trombinoscope PDF (A4/A3)
+  label send               Envoie une étiquette par mail (SMTP)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -199,6 +203,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdMultisite(args[1:], stdout, stderr)
 	case "rbac":
 		return cmdRBAC(args[1:], stdout, stderr)
+	case "label":
+		return cmdLabel(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

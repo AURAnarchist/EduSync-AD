@@ -1,0 +1,136 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "label.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "label.sous_titre"}}</p>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "label.modeles"}}</h2>
+    <div class="mt-3 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-xs uppercase text-slate-500">
+          <tr>
+            <th class="py-1 pr-3">{{tr .Langue "label.col_id"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "label.col_nom"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "label.col_planche"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "label.col_elements"}}</th>
+            <th class="py-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .ModelesLabel}}
+          <tr class="border-t border-slate-100 dark:border-slate-800">
+            <td class="py-1 pr-3 font-mono">{{.ID}}</td>
+            <td class="py-1 pr-3">{{.Nom}}{{if .Integre}} <span class="text-xs text-slate-400">({{tr $.Langue "label.integre"}})</span>{{end}}</td>
+            <td class="py-1 pr-3 font-mono text-xs">{{.Planche}}</td>
+            <td class="py-1 pr-3">{{len .Elements}}</td>
+            <td class="py-1 text-right">
+              <form method="post" action="/app/label/apercu" class="inline">
+                <input type="hidden" name="modele" value="{{.ID}}">
+                <input type="hidden" name="nb" value="6">
+                <button type="submit" class="rounded-md border border-indigo-300 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:hover:bg-indigo-950">
+                  {{tr $.Langue "label.apercu"}}
+                </button>
+              </form>
+              {{if not .Integre}}
+              <form method="post" action="/app/label/supprimer" class="inline">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <button type="submit" class="rounded-md border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-700 dark:hover:bg-rose-950">
+                  {{tr $.Langue "label.supprimer"}}
+                </button>
+              </form>
+              {{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <h2 class="text-lg font-semibold">{{tr .Langue "label.trombi_titre"}}</h2>
+      <p class="mt-1 text-xs text-slate-500">{{tr .Langue "label.trombi_aide"}}</p>
+      <form method="post" action="/app/label/trombinoscope" class="mt-4 grid gap-3 sm:grid-cols-2">
+        <label class="text-sm">
+          <span class="text-slate-500">{{tr .Langue "label.champ_titre"}}</span>
+          <input name="titre" type="text" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </label>
+        <label class="text-sm">
+          <span class="text-slate-500">{{tr .Langue "label.champ_comptes"}}</span>
+          <input name="nb" type="number" min="1" max="100" value="12" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </label>
+        <label class="text-sm">
+          <span class="text-slate-500">{{tr .Langue "label.champ_page"}}</span>
+          <select name="page" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="A4">A4</option>
+            <option value="A3">A3</option>
+          </select>
+        </label>
+        <label class="text-sm">
+          <span class="text-slate-500">{{tr .Langue "label.champ_colonnes"}}</span>
+          <input name="colonnes" type="number" min="1" max="8" value="4" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </label>
+        <div class="sm:col-span-2">
+          <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+            {{tr .Langue "label.generer_trombi"}}
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <h2 class="text-lg font-semibold">{{tr .Langue "label.mail_titre"}}</h2>
+      <p class="mt-1 text-xs text-slate-500">
+        {{if .MailLabel.Host}}
+          {{tr .Langue "label.mail_actuelle"}} : {{.MailLabel.Host}}:{{.MailLabel.Port}} → {{.MailLabel.FromAddr}}
+          {{if .MailLabel.Password}} · {{tr .Langue "label.mail_mdp_defini"}}{{end}}
+        {{else}}
+          {{tr .Langue "label.mail_absente"}}
+        {{end}}
+      </p>
+      <form method="post" action="/app/label/mail" class="mt-4 grid gap-3 sm:grid-cols-2">
+        <label class="text-sm">
+          <span class="text-slate-500">{{tr .Langue "label.champ_hote"}}</span>
+          <input name="host" type="text" value="{{.MailLabel.Host}}" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+        </label>
+        <label class="text-sm">
+          <span class="text-slate-500">{{tr .Langue "label.champ_port"}}</span>
+          <input name="port" type="number" min="1" max="65535" value="{{.MailLabel.Port}}" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </label>
+        <label class="text-sm">
+          <span class="text-slate-500">{{tr .Langue "label.champ_expediteur"}}</span>
+          <input name="from" type="text" value="{{.MailLabel.FromAddr}}" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </label>
+        <label class="text-sm">
+          <span class="text-slate-500">{{tr .Langue "label.champ_nom_expediteur"}}</span>
+          <input name="from_name" type="text" value="{{.MailLabel.FromName}}" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </label>
+        <label class="text-sm">
+          <span class="text-slate-500">{{tr .Langue "label.champ_utilisateur"}}</span>
+          <input name="username" type="text" value="{{.MailLabel.Username}}" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+        </label>
+        <label class="text-sm">
+          <span class="text-slate-500">{{tr .Langue "label.champ_mot_de_passe"}}</span>
+          <input name="password" type="password" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input name="ssl" type="checkbox" value="1" {{if .MailLabel.UseSSL}}checked{{end}}>
+          <span>{{tr .Langue "label.champ_ssl"}}</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input name="no_tls" type="checkbox" value="1" {{if not .MailLabel.UseTLS}}checked{{end}}>
+          <span>{{tr .Langue "label.champ_sans_tls"}}</span>
+        </label>
+        <div class="sm:col-span-2">
+          <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+            {{tr .Langue "label.enregistrer"}}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{{end}}

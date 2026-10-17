@@ -37,7 +37,9 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/exchange"
 	"github.com/estemobs/EduSync-AD/internal/graph"
+	"github.com/estemobs/EduSync-AD/internal/label"
 	"github.com/estemobs/EduSync-AD/internal/m365"
+	"github.com/estemobs/EduSync-AD/internal/mailer"
 	"github.com/estemobs/EduSync-AD/internal/models"
 	"github.com/estemobs/EduSync-AD/internal/multisite"
 	"github.com/estemobs/EduSync-AD/internal/progress"
@@ -184,6 +186,10 @@ type PageData struct {
 	// RBAC — délégation d'administration (M26)
 	Grants    []rbac.Grant
 	RolesRBAC []RoleRBACUI
+
+	// Étiquettes avancées (M24)
+	ModelesLabel []label.ModeleLabel
+	MailLabel    mailer.MailConfig
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -600,6 +606,13 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /app/rbac", s.requireAuthSession(s.pageRBAC))
 	mux.HandleFunc("POST /app/rbac/ajouter", s.requireAuthSession(s.rbacAjouter))
 	mux.HandleFunc("POST /app/rbac/supprimer", s.requireAuthSession(s.rbacSupprimer))
+
+	// Étiquettes avancées (M24)
+	mux.HandleFunc("GET /app/label", s.requireAuthSession(s.pageLabel))
+	mux.HandleFunc("POST /app/label/apercu", s.requireAuthSession(s.labelApercu))
+	mux.HandleFunc("POST /app/label/trombinoscope", s.requireAuthSession(s.labelTrombinoscope))
+	mux.HandleFunc("POST /app/label/mail", s.requireAuthSession(s.labelMail))
+	mux.HandleFunc("POST /app/label/supprimer", s.requireAuthSession(s.labelSupprimer))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -4108,9 +4121,10 @@ type RoleRBACUI struct {
 	Permissions []string
 }
 
-// dossierRBAC retourne le dossier de delegations.json : à côté de config.json
-// en test, sinon dossier de configuration utilisateur (partagé avec Python).
-func (s *Server) dossierRBAC() string {
+// dossierConfig retourne le dossier des fichiers partagés (config.json,
+// delegations.json, label_templates.json…) : à côté de config.json en test,
+// sinon dossier de configuration utilisateur (partagé avec Python).
+func (s *Server) dossierConfig() string {
 	if s.opts.ConfigPath != "" {
 		return filepath.Dir(s.opts.ConfigPath)
 	}
@@ -4122,7 +4136,7 @@ func (s *Server) dossierRBAC() string {
 
 // cheminDelegations retourne le chemin de delegations.json.
 func (s *Server) cheminDelegations() string {
-	return filepath.Join(s.dossierRBAC(), rbac.NomFichier)
+	return filepath.Join(s.dossierConfig(), rbac.NomFichier)
 }
 
 func (s *Server) pageRBAC(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -4248,6 +4262,189 @@ func lignesSimples(valeur string) []string {
 		}
 	}
 	return lignes
+}
+
+// ─── Étiquettes avancées (M24) ───────────────────────────────────────────
+
+// cheminModelesLabel retourne le chemin de label_templates.json.
+func (s *Server) cheminModelesLabel() string {
+	return filepath.Join(s.dossierConfig(), label.NomFichier)
+}
+
+// cheminMailLabel retourne le chemin de label_mail.json.
+func (s *Server) cheminMailLabel() string {
+	return filepath.Join(s.dossierConfig(), mailer.NomFichier)
+}
+
+// cheminCleLabel retourne le chemin de la clé locale (secret.key).
+func (s *Server) cheminCleLabel() string {
+	return filepath.Join(s.dossierConfig(), mailer.NomFichierCle)
+}
+
+// trouverModeleLabel retourne un modèle d'étiquette par identifiant.
+func trouverModeleLabel(modeles []label.ModeleLabel, id string) (label.ModeleLabel, bool) {
+	for _, m := range modeles {
+		if m.ID == id {
+			return m, true
+		}
+	}
+	return label.ModeleLabel{}, false
+}
+
+// lignesDemonstration construit des comptes fictifs pour l'aperçu d'un modèle.
+func lignesDemonstration(nombre int) []map[string]any {
+	lignes := make([]map[string]any, 0, nombre)
+	for i := 1; i <= nombre; i++ {
+		lignes = append(lignes, label.BuildLigneExport(map[string]any{
+			"dn":        fmt.Sprintf("CN=Eleve %d,OU=3emeA,DC=exemple,DC=local", i),
+			"sam":       fmt.Sprintf("eleve%d", i),
+			"cn":        fmt.Sprintf("Eleve %d", i),
+			"givenName": fmt.Sprintf("Prenom%d", i),
+			"sn":        fmt.Sprintf("Nom%d", i),
+			"mail":      fmt.Sprintf("eleve%d@exemple.local", i),
+		}))
+	}
+	return lignes
+}
+
+func (s *Server) pageLabel(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "label.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+
+	d.ModelesLabel = label.ChargerModeles(s.cheminModelesLabel())
+	d.MailLabel = *mailer.ChargerConfig(s.cheminMailLabel(), s.cheminCleLabel())
+	s.rendre(w, http.StatusOK, "label.html", d)
+}
+
+// labelApercu génère une planche d'étiquettes de démonstration (téléchargement).
+func (s *Server) labelApercu(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	modele, ok := trouverModeleLabel(label.ChargerModeles(s.cheminModelesLabel()), strings.TrimSpace(r.FormValue("modele")))
+	if !ok {
+		s.erreur(w, Tr(s.langue(r), "label.modele_introuvable"))
+		return
+	}
+	nombre := bornesInt(r.FormValue("nb"), 6, 1, 50)
+	donnees, _, err := label.RendreEtiquettesPDF(lignesDemonstration(nombre), modele, nil)
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	s.telechargerPDF(w, "apercu_"+modele.ID+".pdf", donnees)
+}
+
+// labelTrombinoscope génère un trombinoscope de démonstration.
+func (s *Server) labelTrombinoscope(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	page := strings.TrimSpace(r.FormValue("page"))
+	if page == "" {
+		page = "A4"
+	}
+	titre := strings.TrimSpace(r.FormValue("titre"))
+	if titre == "" {
+		titre = Tr(langue, "label.trombi_titre_defaut")
+	}
+	nombre := bornesInt(r.FormValue("nb"), 12, 1, 100)
+	donnees, _, err := label.GenererTrombinoscopePDF(lignesDemonstration(nombre), label.OptionsTrombinoscope{
+		Page: page, Colonnes: bornesInt(r.FormValue("colonnes"), label.ColonnesParDefaut, 1, 8), Titre: titre,
+	})
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	s.telechargerPDF(w, "trombinoscope.pdf", donnees)
+}
+
+// labelMail enregistre la configuration SMTP des étiquettes.
+func (s *Server) labelMail(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	cfg := mailer.ChargerConfig(s.cheminMailLabel(), s.cheminCleLabel())
+	if v := strings.TrimSpace(r.FormValue("host")); v != "" {
+		cfg.Host = v
+	}
+	if v := strings.TrimSpace(r.FormValue("port")); v != "" {
+		cfg.Port = bornesInt(v, cfg.Port, 1, 65535)
+	}
+	cfg.Username = strings.TrimSpace(r.FormValue("username"))
+	if v := strings.TrimSpace(r.FormValue("password")); v != "" {
+		cfg.Password = v
+	}
+	if v := strings.TrimSpace(r.FormValue("from")); v != "" {
+		cfg.FromAddr = v
+	}
+	if v := strings.TrimSpace(r.FormValue("from_name")); v != "" {
+		cfg.FromName = v
+	}
+	cfg.UseSSL = valeurCaseACocher(r.FormValue("ssl"))
+	cfg.UseTLS = !valeurCaseACocher(r.FormValue("no_tls")) && !cfg.UseSSL
+	if _, err := mailer.SauvegarderConfig(cfg, s.cheminMailLabel(), s.cheminCleLabel()); err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	http.Redirect(w, r, "/app/label", http.StatusSeeOther)
+}
+
+// labelSupprimer retire un modèle personnalisé.
+func (s *Server) labelSupprimer(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	id := strings.TrimSpace(r.FormValue("id"))
+	modeles := label.ChargerModeles(s.cheminModelesLabel())
+	restants := make([]label.ModeleLabel, 0, len(modeles))
+	supprime := false
+	for _, m := range modeles {
+		if m.ID == id {
+			supprime = true
+			continue
+		}
+		restants = append(restants, m)
+	}
+	if !supprime {
+		s.erreur(w, Tr(s.langue(r), "label.modele_introuvable"))
+		return
+	}
+	if _, err := label.SauvegarderModeles(restants, s.cheminModelesLabel()); err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	http.Redirect(w, r, "/app/label", http.StatusSeeOther)
+}
+
+// telechargerPDF prépare une réponse de téléchargement PDF.
+func (s *Server) telechargerPDF(w http.ResponseWriter, nom string, donnees []byte) {
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+nom+`"`)
+	_, _ = w.Write(donnees)
+}
+
+// bornesInt convertit une valeur de formulaire en entier borné.
+func bornesInt(valeur string, defaut, min, max int) int {
+	n, err := strconv.Atoi(strings.TrimSpace(valeur))
+	if err != nil {
+		n = defaut
+	}
+	if n < min {
+		n = min
+	}
+	if n > max {
+		n = max
+	}
+	return n
 }
 
 // ─── Multisite / multi-domaine (M25) ─────────────────────────────────────
