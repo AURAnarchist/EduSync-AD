@@ -35,6 +35,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/classspaces"
 	"github.com/estemobs/EduSync-AD/internal/config"
+	"github.com/estemobs/EduSync-AD/internal/exchange"
 	"github.com/estemobs/EduSync-AD/internal/models"
 	"github.com/estemobs/EduSync-AD/internal/progress"
 	"github.com/estemobs/EduSync-AD/internal/rds"
@@ -160,6 +161,9 @@ type PageData struct {
 
 	// RDS / Bureau à distance (M21)
 	ConfigRDS rds.Config
+
+	// Microsoft Exchange (M20)
+	ConfigExchange exchange.Config
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -546,6 +550,14 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/rds/collection-script", s.requireAuthSession(s.rdsCollectionScript))
 	mux.HandleFunc("POST /app/rds/remoteapp-script", s.requireAuthSession(s.rdsRemoteAppScript))
 	mux.HandleFunc("POST /app/rds/fslogix-script", s.requireAuthSession(s.rdsFSLogixScript))
+
+	// Microsoft Exchange (M20)
+	mux.HandleFunc("GET /app/exchange", s.requireAuthSession(s.pageExchange))
+	mux.HandleFunc("POST /app/exchange/config", s.requireAuthSession(s.exchangeConfigForm))
+	mux.HandleFunc("POST /app/exchange/plans", s.requireAuthSession(s.exchangePlans))
+	mux.HandleFunc("POST /app/exchange/onprem-script", s.requireAuthSession(s.exchangeOnpremScript))
+	mux.HandleFunc("POST /app/exchange/online-script", s.requireAuthSession(s.exchangeOnlineScript))
+	mux.HandleFunc("POST /app/exchange/policy-script", s.requireAuthSession(s.exchangePolicyScript))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -3835,6 +3847,209 @@ func (s *Server) classSpacesScriptFragment(w http.ResponseWriter, langue string,
 	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
 	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "classspaces.script") + `</h2>`)
 	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500">%s : %s</p>`, Tr(langue, "classspaces.chemin_espace"), html.EscapeString(plan.Path)))
+	b.WriteString(`<pre class="mt-3 overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">`)
+	b.WriteString(html.EscapeString(script))
+	b.WriteString(`</pre></div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Microsoft Exchange (M20) ─────────────────────────────────────────────
+
+// dossierExchange retourne le dossier de configuration Exchange.
+func (s *Server) dossierExchange() string {
+	if s.opts.ConfigPath != "" {
+		return filepath.Dir(s.opts.ConfigPath)
+	}
+	if dir, err := exchange.DossierConfig(); err == nil && dir != "" {
+		return dir
+	}
+	return "."
+}
+
+func (s *Server) pageExchange(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "exchange.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	d.ConfigExchange = exchange.ChargerConfig(filepath.Join(s.dossierExchange(), exchange.FichierConfig))
+	s.rendre(w, http.StatusOK, "exchange.html", d)
+}
+
+// exchangeConfigDepuisForm construit la configuration Exchange depuis le formulaire.
+func exchangeConfigDepuisForm(r *http.Request) exchange.Config {
+	def := exchange.ConfigParDefaut()
+	cfg := def
+	cfg.Mode = valeurFormulaireOu(r.FormValue("mode"), def.Mode)
+	cfg.SMTPDomain = strings.TrimSpace(r.FormValue("smtp_domain"))
+	cfg.AliasPattern = valeurFormulaireOu(r.FormValue("alias_pattern"), def.AliasPattern)
+	cfg.MailboxQuota = valeurFormulaireOu(r.FormValue("mailbox_quota"), def.MailboxQuota)
+	cfg.ArchiveEnabled = r.FormValue("archive_enabled") != ""
+	cfg.RetentionPolicy = strings.TrimSpace(r.FormValue("retention_policy"))
+	cfg.ExchangeServer = strings.TrimSpace(r.FormValue("exchange_server"))
+	cfg.Database = strings.TrimSpace(r.FormValue("database"))
+	cfg.TenantID = strings.TrimSpace(r.FormValue("tenant_id"))
+	cfg.ClientID = strings.TrimSpace(r.FormValue("client_id"))
+	cfg.CertificateThumbprint = strings.TrimSpace(r.FormValue("certificate_thumbprint"))
+	cfg.Organization = strings.TrimSpace(r.FormValue("organization"))
+	return cfg
+}
+
+// valeurFormulaireOu retourne la valeur du formulaire, ou le défaut si vide
+// (les champs à choix contraint — mode, motif d'alias, quota — n'ont pas de
+// valeur vide valide).
+func valeurFormulaireOu(valeur, defaut string) string {
+	if strings.TrimSpace(valeur) == "" {
+		return defaut
+	}
+	return strings.TrimSpace(valeur)
+}
+
+// exchangeConfigForm enregistre la configuration Exchange.
+func (s *Server) exchangeConfigForm(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	cfg := exchangeConfigDepuisForm(r)
+	if err := exchange.SauvegarderConfig(filepath.Join(s.dossierExchange(), exchange.FichierConfig), cfg); err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	if s.journal != nil {
+		entree := nouvelleEntree("exchange_config", cfg.SMTPDomain, "succes",
+			fmt.Sprintf("Mode: %s, quota: %s", cfg.Mode, cfg.MailboxQuota))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+	s.exchangeMessage(w, langue, Tr(langue, "exchange.config_enregistree"), false)
+}
+
+// lireComptesFormulaire lit la liste des comptes saisie (une ligne par compte,
+// champs séparés par « ; » : sam ; cn ; dn).
+func lireComptesFormulaire(r *http.Request) []exchange.UtilisateurBal {
+	var comptes []exchange.UtilisateurBal
+	for _, ligne := range strings.Split(r.FormValue("comptes"), "\n") {
+		ligne = strings.TrimSpace(ligne)
+		if ligne == "" {
+			continue
+		}
+		champs := strings.Split(ligne, ";")
+		get := func(i int) string {
+			if i < len(champs) {
+				return strings.TrimSpace(champs[i])
+			}
+			return ""
+		}
+		compte := exchange.UtilisateurBal{SAM: get(0), CN: get(1), DN: get(2)}
+		if compte.SAM == "" && compte.CN == "" {
+			continue
+		}
+		comptes = append(comptes, compte)
+	}
+	return comptes
+}
+
+// exchangePlansDepuisForm construit les plans depuis le formulaire.
+func (s *Server) exchangePlansDepuisForm(r *http.Request, cfg exchange.Config) []exchange.PlanBal {
+	return exchange.ConstruirePlansBals(lireComptesFormulaire(r), cfg, strings.TrimSpace(r.FormValue("domain")))
+}
+
+func (s *Server) exchangePlans(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	cfg := exchange.ChargerConfig(filepath.Join(s.dossierExchange(), exchange.FichierConfig))
+	s.exchangePlansFragment(w, langue, s.exchangePlansDepuisForm(r, cfg))
+}
+
+func (s *Server) exchangeOnpremScript(w http.ResponseWriter, r *http.Request, _ *session) {
+	s.exchangeScript(w, r, "onprem")
+}
+
+func (s *Server) exchangeOnlineScript(w http.ResponseWriter, r *http.Request, _ *session) {
+	s.exchangeScript(w, r, "online")
+}
+
+// exchangeScript génère un script de boîtes (sur site ou en ligne).
+func (s *Server) exchangeScript(w http.ResponseWriter, r *http.Request, mode string) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	cfg := exchange.ChargerConfig(filepath.Join(s.dossierExchange(), exchange.FichierConfig))
+	cfg.Mode = mode
+	plans := s.exchangePlansDepuisForm(r, cfg)
+	var script string
+	if mode == "online" {
+		script = exchange.ScriptEnLigne(plans, cfg)
+	} else {
+		script = exchange.ScriptSurSite(plans, cfg)
+	}
+	s.exchangeScriptFragment(w, langue, script)
+}
+
+func (s *Server) exchangePolicyScript(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	cfg := exchange.ChargerConfig(filepath.Join(s.dossierExchange(), exchange.FichierConfig))
+	s.exchangeScriptFragment(w, langue, exchange.ScriptPolitiqueAdresses(cfg))
+}
+
+// exchangeMessage rend un message simple (succès ou erreur).
+func (s *Server) exchangeMessage(w http.ResponseWriter, langue, message string, erreur bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	classe := "text-emerald-600 dark:text-emerald-400"
+	if erreur {
+		classe = "text-rose-600 dark:text-rose-400"
+	}
+	fmt.Fprintf(w, `<p class="text-sm %s">%s</p>`, classe, html.EscapeString(message))
+}
+
+// exchangePlansFragment rend le tableau des plans de boîtes.
+func (s *Server) exchangePlansFragment(w http.ResponseWriter, langue string, plans []exchange.PlanBal) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-lg border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(fmt.Sprintf(`<p class="font-semibold">%d %s</p>`, len(plans), Tr(langue, "exchange.plans")))
+	if len(plans) == 0 {
+		b.WriteString(`<p class="text-slate-500">` + Tr(langue, "exchange.aucun") + `</p></div>`)
+		w.Write([]byte(b.String()))
+		return
+	}
+	b.WriteString(`<table class="mt-2 w-full text-xs"><thead><tr class="text-left text-slate-500">`)
+	b.WriteString(`<th class="py-1 pr-3">` + Tr(langue, "exchange.col_identifiant") + `</th>`)
+	b.WriteString(`<th class="py-1 pr-3">` + Tr(langue, "exchange.col_principal") + `</th>`)
+	b.WriteString(`<th class="py-1 pr-3">` + Tr(langue, "exchange.col_alias") + `</th>`)
+	b.WriteString(`<th class="py-1">` + Tr(langue, "exchange.col_upn") + `</th>`)
+	b.WriteString(`</tr></thead><tbody>`)
+	for _, plan := range plans {
+		identifiant := plan.SAM
+		if identifiant == "" {
+			identifiant = plan.CN
+		}
+		b.WriteString(fmt.Sprintf(`<tr class="border-t border-slate-100 dark:border-slate-800"><td class="py-1 pr-3 font-mono">%s</td><td class="py-1 pr-3 font-mono">%s</td><td class="py-1 pr-3 font-mono">%s</td><td class="py-1 font-mono">%s</td></tr>`,
+			html.EscapeString(identifiant), html.EscapeString(plan.Primaire),
+			html.EscapeString(strings.Join(plan.Alias, ", ")), html.EscapeString(plan.UPN)))
+	}
+	b.WriteString(`</tbody></table></div>`)
+	w.Write([]byte(b.String()))
+}
+
+// exchangeScriptFragment rend un script PowerShell généré.
+func (s *Server) exchangeScriptFragment(w http.ResponseWriter, langue, script string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "exchange.script") + `</h2>`)
 	b.WriteString(`<pre class="mt-3 overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">`)
 	b.WriteString(html.EscapeString(script))
 	b.WriteString(`</pre></div>`)

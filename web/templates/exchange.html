@@ -1,0 +1,122 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "exchange.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "exchange.sous_titre"}}</p>
+  </div>
+
+  <!-- 1. Configuration -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "exchange.config_titre"}}</h2>
+    <form method="post" action="/app/exchange/config"
+          hx-post="/app/exchange/config" hx-target="#ex-config-result" hx-swap="innerHTML"
+          class="mt-4 grid gap-3 sm:grid-cols-2">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.mode"}}</span>
+        <select name="mode" class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <option value="onprem" {{if eq .ConfigExchange.Mode "onprem"}}selected{{end}}>{{tr .Langue "exchange.mode_onprem"}}</option>
+          <option value="online" {{if eq .ConfigExchange.Mode "online"}}selected{{end}}>{{tr .Langue "exchange.mode_online"}}</option>
+        </select>
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.smtp_domain"}}</span>
+        <input name="smtp_domain" type="text" value="{{.ConfigExchange.SMTPDomain}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.alias_pattern"}}</span>
+        <input name="alias_pattern" type="text" value="{{.ConfigExchange.AliasPattern}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.mailbox_quota"}}</span>
+        <input name="mailbox_quota" type="text" value="{{.ConfigExchange.MailboxQuota}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.retention"}}</span>
+        <input name="retention_policy" type="text" value="{{.ConfigExchange.RetentionPolicy}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="flex items-center gap-2 text-sm">
+        <input name="archive_enabled" type="checkbox" value="1" {{if .ConfigExchange.ArchiveEnabled}}checked{{end}}>
+        <span>{{tr .Langue "exchange.archive"}}</span>
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.exchange_server"}}</span>
+        <input name="exchange_server" type="text" value="{{.ConfigExchange.ExchangeServer}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.database"}}</span>
+        <input name="database" type="text" value="{{.ConfigExchange.Database}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.tenant_id"}}</span>
+        <input name="tenant_id" type="text" value="{{.ConfigExchange.TenantID}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.client_id"}}</span>
+        <input name="client_id" type="text" value="{{.ConfigExchange.ClientID}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.certificate_thumbprint"}}</span>
+        <input name="certificate_thumbprint" type="text" value="{{.ConfigExchange.CertificateThumbprint}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.organization"}}</span>
+        <input name="organization" type="text" value="{{.ConfigExchange.Organization}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <div class="sm:col-span-2">
+        <button type="submit" class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "exchange.enregistrer"}}
+        </button>
+      </div>
+    </form>
+    <div id="ex-config-result" class="mt-4"></div>
+  </div>
+
+  <!-- 2. Comptes et plans -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "exchange.comptes_titre"}}</h2>
+    <p class="mt-1 text-xs text-slate-500">{{tr .Langue "exchange.comptes_aide"}}</p>
+    <form class="mt-4 grid gap-3">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.domain"}}</span>
+        <input name="domain" type="text" placeholder="lycee.local"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "exchange.comptes"}}</span>
+        <textarea name="comptes" rows="8"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-800"></textarea>
+      </label>
+      <div class="flex flex-wrap gap-2">
+        <button type="submit" formaction="/app/exchange/plans" hx-post="/app/exchange/plans" hx-target="#ex-plans-result"
+                class="rounded-md bg-slate-700 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-600">
+          {{tr .Langue "exchange.voir_plans"}}
+        </button>
+        <button type="submit" formaction="/app/exchange/onprem-script" hx-post="/app/exchange/onprem-script" hx-target="#ex-script-result"
+                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "exchange.script_onprem"}}
+        </button>
+        <button type="submit" formaction="/app/exchange/online-script" hx-post="/app/exchange/online-script" hx-target="#ex-script-result"
+                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "exchange.script_online"}}
+        </button>
+        <button type="submit" formaction="/app/exchange/policy-script" hx-post="/app/exchange/policy-script" hx-target="#ex-script-result"
+                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "exchange.script_policy"}}
+        </button>
+      </div>
+    </form>
+    <div id="ex-plans-result" class="mt-4"></div>
+    <div id="ex-script-result" class="mt-4"></div>
+  </div>
+</div>
+{{end}}

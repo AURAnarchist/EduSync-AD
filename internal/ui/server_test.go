@@ -1198,3 +1198,109 @@ func TestRDSSansSession(t *testing.T) {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
 }
+
+// ─── Microsoft Exchange (M20) ─────────────────────────────────────────────
+
+func TestExchangePage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/exchange", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Microsoft Exchange") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestExchangeConfigEnregistrer(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/exchange/config", url.Values{
+		"mode":            {"onprem"},
+		"smtp_domain":     {"lycee.fr"},
+		"alias_pattern":   {"{prenom}.{nom}"},
+		"mailbox_quota":   {"10GB"},
+		"exchange_server": {"exch01.lycee.local"},
+	}, entetes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Configuration enregistrée") {
+		t.Errorf("confirmation absente, body: %s", w.Body.String())
+	}
+}
+
+func TestExchangePlans(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	if w := demander(t, s, "POST", "/app/exchange/config", url.Values{
+		"mode": {"onprem"}, "smtp_domain": {"lycee.fr"}, "exchange_server": {"exch01.lycee.local"},
+	}, entetes); w.Code != http.StatusOK {
+		t.Fatalf("config: code = %d", w.Code)
+	}
+
+	w := demander(t, s, "POST", "/app/exchange/plans", url.Values{
+		"domain":  {"lycee.local"},
+		"comptes": {"jdurand;Jean Durand;CN=Jean Durand,OU=Profs,DC=lycee,DC=local"},
+	}, entetes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	for _, attendu := range []string{"jdurand@lycee.fr", "jean.durand@lycee.fr", "jdurand@lycee.local"} {
+		if !strings.Contains(corps, attendu) {
+			t.Errorf("plans sans %q : %s", attendu, corps)
+		}
+	}
+}
+
+func TestExchangeOnpremScript(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	if w := demander(t, s, "POST", "/app/exchange/config", url.Values{
+		"mode": {"onprem"}, "smtp_domain": {"lycee.fr"}, "exchange_server": {"exch01.lycee.local"},
+	}, entetes); w.Code != http.StatusOK {
+		t.Fatalf("config: code = %d", w.Code)
+	}
+
+	w := demander(t, s, "POST", "/app/exchange/onprem-script", url.Values{
+		"comptes": {"jdurand;Jean Durand"},
+	}, entetes)
+	if !strings.Contains(w.Body.String(), "New-PSSession -ConfigurationName Microsoft.Exchange") {
+		t.Errorf("script sur site absent, body: %s", w.Body.String())
+	}
+}
+
+func TestExchangePolicyScript(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	if w := demander(t, s, "POST", "/app/exchange/config", url.Values{
+		"mode": {"onprem"}, "smtp_domain": {"lycee.fr"}, "exchange_server": {"exch01.lycee.local"},
+	}, entetes); w.Code != http.StatusOK {
+		t.Fatalf("config: code = %d", w.Code)
+	}
+
+	w := demander(t, s, "POST", "/app/exchange/policy-script", url.Values{}, entetes)
+	if !strings.Contains(w.Body.String(), "New-EmailAddressPolicy") {
+		t.Errorf("politique absente, body: %s", w.Body.String())
+	}
+}
+
+func TestExchangeSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/exchange", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}

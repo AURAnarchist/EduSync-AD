@@ -289,6 +289,39 @@ func (p *Pool) UserEnable(ctx context.Context, dn string, enable bool) error {
 	return nil
 }
 
+// AttributeUpdate décrit le remplacement des valeurs d'un attribut LDAP.
+type AttributeUpdate struct {
+	// Nom de l'attribut LDAP (ex. « mail », « proxyAddresses »).
+	Nom string `json:"name"`
+	// Valeurs à écrire (remplacement complet).
+	Valeurs []string `json:"values"`
+}
+
+// UserSetAttributes remplace les valeurs des attributs fournis sur un objet AD
+// (utilisateur ou groupe). Les attributs absents de la requête sont inchangés.
+func (p *Pool) UserSetAttributes(ctx context.Context, dn string, majs []AttributeUpdate) error {
+	if len(majs) == 0 {
+		return nil
+	}
+	conn, err := p.Get(ctx)
+	if err != nil {
+		return err
+	}
+	defer p.Put(conn)
+
+	modReq := ldap.NewModifyRequest(dn, nil)
+	for _, maj := range majs {
+		if maj.Nom == "" {
+			continue
+		}
+		modReq.Replace(maj.Nom, maj.Valeurs)
+	}
+	if err := conn.Modify(modReq); err != nil {
+		return fmt.Errorf("ad: mise à jour des attributs de %s: %w", dn, err)
+	}
+	return nil
+}
+
 // UserMove déplace un utilisateur vers une autre OU.
 func (p *Pool) UserMove(ctx context.Context, dn, newOU string) error {
 	conn, err := p.Get(ctx)

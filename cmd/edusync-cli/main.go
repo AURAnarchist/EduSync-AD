@@ -101,6 +101,12 @@ Commandes :
   rds remoteapp-script     Script de publication des RemoteApp
   rds fslogix-script       Script de configuration FSLogix
   rds plans                Affiche les plans RDS enregistrés
+  exchange config          Affiche/enregistre la configuration Exchange
+  exchange plans           Construit les plans de boîtes depuis des comptes
+  exchange onprem-script   Script Exchange sur site (Remote PowerShell)
+  exchange online-script   Script Exchange Online (app-only)
+  exchange policy-script   Script de politique d'adresses (on-prem)
+  exchange report          Rapport CSV des adresses
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -163,6 +169,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdAdvancedIO(args[1:], stdout, stderr)
 	case "rds":
 		return cmdRDS(args[1:], stdout, stderr)
+	case "exchange":
+		return cmdExchange(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:
