@@ -145,6 +145,13 @@ type PageData struct {
 
 	// Espaces de classe (M18)
 	ConfigClassSpaces classspaces.Config
+
+	// Cache AD (T2)
+	StatsCache         ad.CacheStats
+	CheminCacheAD      string
+	CacheADPerime      bool
+	ResultatCacheOUs   []ad.CacheOU
+	ResultatCacheUsers []ad.CacheUser
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -510,6 +517,12 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/class-spaces/creation-script", s.requireAuthSession(s.classSpacesCreationScript))
 	mux.HandleFunc("POST /app/class-spaces/sync-script", s.requireAuthSession(s.classSpacesSyncScript))
 	mux.HandleFunc("POST /app/class-spaces/mark-synced", s.requireAuthSession(s.classSpacesMarkSynced))
+
+	// Cache AD SQLite (T2)
+	mux.HandleFunc("GET /app/ad-cache", s.requireAuthSession(s.pageADCache))
+	mux.HandleFunc("POST /app/ad-cache/sync", s.requireAuthSession(s.adCacheSync))
+	mux.HandleFunc("POST /app/ad-cache/search", s.requireAuthSession(s.adCacheSearch))
+	mux.HandleFunc("POST /app/ad-cache/ous", s.requireAuthSession(s.adCacheOUs))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -3802,6 +3815,204 @@ func (s *Server) classSpacesScriptFragment(w http.ResponseWriter, langue string,
 	b.WriteString(`<pre class="mt-3 overflow-x-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">`)
 	b.WriteString(html.EscapeString(script))
 	b.WriteString(`</pre></div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Cache AD SQLite (T2) ─────────────────────────────────────────────────
+
+// cheminCacheAD retourne le chemin du cache AD (à côté de config.json en test,
+// sinon chemin partagé avec la version Python).
+func (s *Server) cheminCacheAD() string {
+	if s.opts.ConfigPath != "" {
+		return filepath.Join(filepath.Dir(s.opts.ConfigPath), ad.NomFichierCache)
+	}
+	if chemin, err := ad.CheminCacheParDefaut(); err == nil && chemin != "" {
+		return chemin
+	}
+	return filepath.Join(".", ad.NomFichierCache)
+}
+
+// ouvrirCacheAD ouvre le cache AD pour l'UI.
+func (s *Server) ouvrirCacheAD() (*ad.ADCache, error) {
+	return ad.NewADCache(s.cheminCacheAD(), ad.CacheTTLDefaut)
+}
+
+func (s *Server) pageADCache(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "adcache.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	d.CheminCacheAD = s.cheminCacheAD()
+	if cache, err := s.ouvrirCacheAD(); err == nil {
+		d.StatsCache = cache.Stats()
+		d.CacheADPerime = cache.IsStale()
+		_ = cache.Close()
+	}
+	s.rendre(w, http.StatusOK, "ad_cache.html", d)
+}
+
+// adCacheSync synchronise le cache depuis l'annuaire.
+func (s *Server) adCacheSync(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	complet := r.FormValue("complet") != ""
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.adCacheMessage(w, langue, Tr(langue, "adcache.attente_ad"), true)
+		return
+	}
+
+	cache, err := s.ouvrirCacheAD()
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	defer func() { _ = cache.Close() }()
+
+	stats, err := cache.Sync(r.Context(), pool, complet)
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	if s.journal != nil {
+		mode := "incrémentale"
+		if complet {
+			mode = "complète"
+		}
+		entree := nouvelleEntree("ad_cache_sync", s.cheminCacheAD(), "succes",
+			fmt.Sprintf("Sync %s : %d OUs, %d groupes, %d utilisateurs", mode, stats.OUsCount, stats.GroupsCount, stats.UsersCount))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+	s.adCacheStatsFragment(w, langue, stats, s.cheminCacheAD())
+}
+
+// adCacheSearch recherche des utilisateurs dans le cache.
+func (s *Server) adCacheSearch(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	query := strings.TrimSpace(r.FormValue("query"))
+	if query == "" {
+		s.adCacheMessage(w, langue, Tr(langue, "adcache.query_obligatoire"), true)
+		return
+	}
+
+	cache, err := s.ouvrirCacheAD()
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	defer func() { _ = cache.Close() }()
+
+	users, err := cache.SearchUsers(query, 100)
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	s.adCacheUsersFragment(w, langue, users)
+}
+
+// adCacheOUs liste les OUs du cache.
+func (s *Server) adCacheOUs(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+
+	cache, err := s.ouvrirCacheAD()
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	defer func() { _ = cache.Close() }()
+
+	ous, err := cache.GetOUs(strings.TrimSpace(r.FormValue("parent")))
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	s.adCacheOUsFragment(w, langue, ous)
+}
+
+// adCacheMessage rend un message simple (succès ou erreur).
+func (s *Server) adCacheMessage(w http.ResponseWriter, langue, message string, erreur bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	classe := "text-emerald-600 dark:text-emerald-400"
+	if erreur {
+		classe = "text-rose-600 dark:text-rose-400"
+	}
+	fmt.Fprintf(w, `<p class="text-sm %s">%s</p>`, classe, html.EscapeString(message))
+}
+
+// adCacheStatsFragment rend les statistiques du cache.
+func (s *Server) adCacheStatsFragment(w http.ResponseWriter, langue string, stats ad.CacheStats, chemin string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "adcache.stats_titre") + `</h2>`)
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "adcache.chemin"), html.EscapeString(chemin)))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %d</p>`, Tr(langue, "adcache.ous"), stats.OUsCount))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %d</p>`, Tr(langue, "adcache.groupes"), stats.GroupsCount))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %d</p>`, Tr(langue, "adcache.utilisateurs"), stats.UsersCount))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %d</p>`, Tr(langue, "adcache.usn"), stats.LastUSNChanged))
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// adCacheUsersFragment rend la liste des utilisateurs trouvés.
+func (s *Server) adCacheUsersFragment(w http.ResponseWriter, langue string, users []ad.CacheUser) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "adcache.resultat") + `</h2>`)
+	if len(users) == 0 {
+		b.WriteString(`<p class="text-sm text-slate-500">` + Tr(langue, "adcache.aucun") + `</p>`)
+	} else {
+		b.WriteString(`<table class="mt-2 w-full text-sm"><thead><tr class="text-left text-xs uppercase text-slate-500">`)
+		b.WriteString(`<th class="py-1">` + Tr(langue, "adcache.col_sam") + `</th>`)
+		b.WriteString(`<th class="py-1">` + Tr(langue, "adcache.col_cn") + `</th>`)
+		b.WriteString(`<th class="py-1">` + Tr(langue, "adcache.col_ou") + `</th>`)
+		b.WriteString(`<th class="py-1">` + Tr(langue, "adcache.col_etat") + `</th></tr></thead><tbody>`)
+		for _, u := range users {
+			etat := Tr(langue, "adcache.actif")
+			if u.Desactive {
+				etat = Tr(langue, "adcache.desactive")
+			}
+			b.WriteString(fmt.Sprintf(`<tr class="border-t border-slate-100 dark:border-slate-800"><td class="py-1 font-mono">%s</td><td class="py-1">%s</td><td class="py-1 text-slate-500">%s</td><td class="py-1">%s</td></tr>`,
+				html.EscapeString(u.SAM), html.EscapeString(u.CN), html.EscapeString(u.OUDN), html.EscapeString(etat)))
+		}
+		b.WriteString(`</tbody></table>`)
+	}
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// adCacheOUsFragment rend la liste des OUs.
+func (s *Server) adCacheOUsFragment(w http.ResponseWriter, langue string, ous []ad.CacheOU) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "adcache.resultat") + `</h2>`)
+	if len(ous) == 0 {
+		b.WriteString(`<p class="text-sm text-slate-500">` + Tr(langue, "adcache.aucun") + `</p>`)
+	} else {
+		b.WriteString(`<ul class="mt-2 space-y-1 text-sm">`)
+		for _, o := range ous {
+			b.WriteString(fmt.Sprintf(`<li class="font-mono">%s</li>`, html.EscapeString(o.DN)))
+		}
+		b.WriteString(`</ul>`)
+	}
+	b.WriteString(`</div>`)
 	w.Write([]byte(b.String()))
 }
 

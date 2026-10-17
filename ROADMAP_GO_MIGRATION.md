@@ -295,7 +295,7 @@ edusync-ad/
 |---|---|---|
 | **T0 — couche LDAP asynchrone** | Goroutines + `context.Context` (natif) | Pas de chantier de portage **mais** : barre de progression, annulation et rapports d'erreur à câbler dans l'UI pour les opérations de masse (Lot A) |
 | **T1 — système de plugins** (`entry_points`) | Modules `internal/*` câblés, activation par configuration | **Hot-reload hors périmètre** : écart documenté dans les notes alpha ; revue en priorité 3 si un vrai besoin de chargement à chaud émerge |
-| **T2 — cache AD SQLite** | Cache OU/groupes/users, invalidation TTL + `uSNChanged` | À implémenter (Lot B) — conditionne la fluidité de l'explorateur sur gros domaines |
+| **T2 — cache AD SQLite** | Cache OU/groupes/users, invalidation TTL + `uSNChanged` | ✅ Livré et testé (B8) — `internal/ad/cache.go` : fichier `ad_cache.sqlite` au schéma **identique à Python**, sync complète/incrémentale `uSNChanged`, TTL, intégration explorateur (`GetSubTree`) |
 
 ### 4.5 Transverses
 
@@ -742,6 +742,7 @@ Ajoute le support multisite (multi-domaine/forêt).
 18. **Lot B, B5** : ✅ fait — M17 Dossiers personnels : `internal/ad/homedirs.go` (chemin UNC \\srv\homes\%USERNAME%, lettre de lecteur, attributs homeDirectory/homeDrive), routes UI `/app/homedirs`, gabarit `homedirs.html`, CLI `homedirs simulate/execute`, i18n fr/en, tests unitaires.
 19. **Lot B, B6** : ✅ fait — M12 Photos d'identité : `internal/ad/photos.go` (attributs thumbnailPhoto/jpegPhoto, lecture du fichier disque, recadrage 3:4 centré + redimensionnement + ré-encodage JPEG, limite 200 Ko, import en masse `<sAMAccountName>.jpg`), routes UI `/app/photos`, gabarit `photos.html`, CLI `photos simulate/execute`, i18n fr/en, tests unitaires.
 20. **Lot B, B7** : ✅ fait — M18 Espaces partagés par classe : `internal/classspaces/classspaces.go` (configuration partagée `\\srv\classes\%GROUP%`, classement profs/élèves par groupe ou OU, plan + diff de synchronisation, génération des scripts PowerShell création/partage SMB + droits NTFS et synchro membres AD ↔ droits, persistance `class_spaces.json`/`class_spaces_state.json` au format Python, hook `NotifierCreationGroupe`), routes UI `/app/class-spaces` (+ config/plan/creation-script/sync-script), gabarit `class_spaces.html`, CLI `class-spaces plan/creation-script/sync-script/notify/config`, i18n fr/en, tests unitaires.
+21. **Lot B, B8** : ✅ fait — T2 Cache AD SQLite : `internal/ad/cache.go` (schéma identique à Python `ad_cache.sqlite`, sync complète + incrémentale `uSNChanged`, TTL, méta `last_sync`/`last_usn_changed`, requêtes OUs/groupes/utilisateurs/recherche, intégration `GetSubTree`), routes UI `/app/ad-cache` (+ sync/search/ous), gabarit `ad_cache.html`, CLI `ad-cache stats/ous/groups/users/search/sync`, i18n fr/en, tests unitaires.
 
 **Priorité 2 — releases :**
 

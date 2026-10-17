@@ -1,0 +1,86 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "adcache.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "adcache.sous_titre"}}</p>
+  </div>
+
+  <!-- 1. Statistiques et synchronisation -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-semibold">{{tr .Langue "adcache.stats_titre"}}</h2>
+      {{if .CacheADPerime}}
+        <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">{{tr .Langue "adcache.perime"}}</span>
+      {{else}}
+        <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">{{tr .Langue "adcache.frais"}}</span>
+      {{end}}
+    </div>
+
+    <dl class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-slate-500">{{tr .Langue "adcache.ous"}}</dt>
+        <dd class="text-xl font-semibold">{{.StatsCache.OUsCount}}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-slate-500">{{tr .Langue "adcache.groupes"}}</dt>
+        <dd class="text-xl font-semibold">{{.StatsCache.GroupsCount}}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-slate-500">{{tr .Langue "adcache.utilisateurs"}}</dt>
+        <dd class="text-xl font-semibold">{{.StatsCache.UsersCount}}</dd>
+      </div>
+      <div>
+        <dt class="text-xs uppercase tracking-wide text-slate-500">{{tr .Langue "adcache.usn"}}</dt>
+        <dd class="text-xl font-semibold">{{.StatsCache.LastUSNChanged}}</dd>
+      </div>
+    </dl>
+    <p class="mt-3 break-all font-mono text-xs text-slate-500">{{tr .Langue "adcache.chemin"}} : {{.CheminCacheAD}}</p>
+
+    <form method="post" action="/app/ad-cache/sync"
+          hx-post="/app/ad-cache/sync" hx-target="#ac-sync-result" hx-swap="innerHTML"
+          class="mt-4 flex flex-wrap items-center gap-3">
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="complet" value="1" class="rounded border-slate-300 dark:border-slate-700">
+        {{tr .Langue "adcache.sync_complet"}}
+      </label>
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "adcache.synchroniser"}}
+      </button>
+    </form>
+    <div id="ac-sync-result" class="mt-4"></div>
+  </div>
+
+  <!-- 2. Recherche utilisateurs -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "adcache.search_titre"}}</h2>
+    <form method="post" action="/app/ad-cache/search"
+          hx-post="/app/ad-cache/search" hx-target="#ac-search-result" hx-swap="innerHTML"
+          class="mt-4 flex flex-wrap gap-3">
+      <input name="query" type="text" placeholder="{{tr .Langue "adcache.recherche_placeholder"}}"
+             class="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "adcache.rechercher"}}
+      </button>
+    </form>
+    <div id="ac-search-result" class="mt-4"></div>
+  </div>
+
+  <!-- 3. Unités d'organisation -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "adcache.ous_titre"}}</h2>
+    <form method="post" action="/app/ad-cache/ous"
+          hx-post="/app/ad-cache/ous" hx-target="#ac-ous-result" hx-swap="innerHTML"
+          class="mt-4 flex flex-wrap gap-3">
+      <input name="parent" type="text" placeholder="{{tr .Langue "adcache.parent_placeholder"}}"
+             class="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "adcache.lister"}}
+      </button>
+    </form>
+    <div id="ac-ous-result" class="mt-4"></div>
+  </div>
+</div>
+{{end}}

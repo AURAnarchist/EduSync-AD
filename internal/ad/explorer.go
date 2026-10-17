@@ -408,6 +408,13 @@ func (p *Pool) entryToSearchResult(e *ldap.Entry) *SearchResultEntry {
 
 // GetSubTree retourne les enfants d'un nœud (lazy loading pour l'UI).
 func (p *Pool) GetSubTree(ctx context.Context, parentDN string, includeGroups bool) ([]*ExplorerNode, error) {
+	// Cache AD SQLite (T2) : sert l'arborescence sans requête LDAP si frais.
+	if p.cacheAD != nil && !p.cacheAD.IsStale() {
+		if nodes, err := p.cacheAD.EnfantsExplorateur(parentDN, includeGroups); err == nil && len(nodes) > 0 {
+			return nodes, nil
+		}
+	}
+
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return nil, err

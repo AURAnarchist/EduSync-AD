@@ -149,6 +149,7 @@ type Pool struct {
 	closed   bool
 	dialFunc func(ctx context.Context, addr string) (net.Conn, error)
 	cache    *ExplorerCache // cache explorateur (arbre, recherches)
+	cacheAD  *ADCache       // cache AD SQLite (T2), optionnel
 	krb5Cli  *client.Client // client Kerberos pour SASL/GSSAPI
 }
 

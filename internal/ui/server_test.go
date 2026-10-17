@@ -942,3 +942,73 @@ func TestClassSpacesMarkSyncedSansAd(t *testing.T) {
 		t.Errorf("message attendu, body: %s", w.Body.String())
 	}
 }
+
+// ─── Cache AD SQLite (T2) ─────────────────────────────────────────────────
+
+func TestADCachePage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/ad-cache", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	if !strings.Contains(corps, "Cache AD local") {
+		t.Errorf("titre absent, body: %s", corps)
+	}
+	if !strings.Contains(corps, "ad-cache/search") {
+		t.Errorf("formulaire de recherche absent")
+	}
+}
+
+func TestADCacheSearchVide(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/ad-cache/search", url.Values{"query": {"ali"}},
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Aucun résultat") {
+		t.Errorf("cache vide attendu, body: %s", w.Body.String())
+	}
+}
+
+func TestADCacheSearchSansQuery(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/ad-cache/search", url.Values{"query": {""}},
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "obligatoire") {
+		t.Errorf("message d'erreur attendu, body: %s", w.Body.String())
+	}
+}
+
+func TestADCacheSyncSansAd(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/ad-cache/sync", url.Values{"complet": {"1"}},
+		map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "Connexion AD requise") {
+		t.Errorf("message attente_ad attendu, body: %s", w.Body.String())
+	}
+}
+
+func TestADCacheSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/ad-cache", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}

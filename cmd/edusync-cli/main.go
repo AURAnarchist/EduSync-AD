@@ -82,6 +82,12 @@ Commandes :
   class-spaces sync-script      Génère le script PowerShell de synchro
   class-spaces notify           Enregistre un espace en attente (hook)
   class-spaces config           Affiche la configuration des espaces
+  ad-cache stats           Affiche les statistiques du cache AD
+  ad-cache ous             Liste les OUs du cache
+  ad-cache groups          Liste les groupes du cache
+  ad-cache users           Liste les utilisateurs d'une OU (cache)
+  ad-cache search          Recherche des utilisateurs dans le cache
+  ad-cache sync            Synchronise le cache (AD requis)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -138,6 +144,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdPhotos(args[1:], stdout, stderr)
 	case "class-spaces":
 		return cmdClassSpaces(args[1:], stdout, stderr)
+	case "ad-cache":
+		return cmdADCache(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:
