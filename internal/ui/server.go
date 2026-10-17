@@ -478,6 +478,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/logon-hours/simulate", s.requireAuthSession(s.logonHoursSimulate))
 	mux.HandleFunc("POST /app/logon-hours/execute", s.requireAuthSession(s.logonHoursExecute))
 
+	// Scripts logon/logoff (M15)
+	mux.HandleFunc("GET /app/logon-scripts", s.requireAuthSession(s.pageLogonScripts))
+	mux.HandleFunc("POST /app/logon-scripts/simulate", s.requireAuthSession(s.logonScriptsSimulate))
+	mux.HandleFunc("POST /app/logon-scripts/execute", s.requireAuthSession(s.logonScriptsExecute))
+
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
 }
@@ -3045,6 +3050,118 @@ func (s *Server) logonHoursResultatFragment(w http.ResponseWriter, langue string
 	}
 	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "logonhours.statut"), result.Statut))
 	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "logonhours.detail"), result.Detaille))
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Scripts logon/logoff (M15) ──────────────────────────────────────
+
+func (s *Server) pageLogonScripts(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "logonscripts.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "logon_scripts.html", d)
+}
+
+func (s *Server) logonScriptsSimulate(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	typ := ad.ScriptType(strings.TrimSpace(r.FormValue("type")))
+	contenu := strings.TrimSpace(r.FormValue("contenu"))
+
+	params := ad.ScriptParams{
+		UserDN:  userDN,
+		Type:    typ,
+		Contenu: contenu,
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.logonScriptsResultatFragment(w, langue, &ad.ScriptResult{
+			UserDN:   params.UserDN,
+			Type:     params.Type,
+			Contenu:  params.Contenu,
+			Statut:   "attente_ad",
+			Detaille: "connexion AD requise pour vérifier l'existence du compte",
+		})
+		return
+	}
+
+	result, err := pool.ScriptSimulate(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	s.logonScriptsResultatFragment(w, langue, result)
+}
+
+func (s *Server) logonScriptsExecute(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	typ := ad.ScriptType(strings.TrimSpace(r.FormValue("type")))
+	contenu := strings.TrimSpace(r.FormValue("contenu"))
+
+	params := ad.ScriptParams{
+		UserDN:  userDN,
+		Type:    typ,
+		Contenu: contenu,
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.logonScriptsResultatFragment(w, langue, &ad.ScriptResult{
+			UserDN:   params.UserDN,
+			Type:     params.Type,
+			Contenu:  params.Contenu,
+			Statut:   "attente_ad",
+			Detaille: "connexion AD requise pour appliquer le script",
+		})
+		return
+	}
+
+	result, err := pool.ScriptExecute(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	if s.journal != nil {
+		entree := nouvelleEntree("script_logon", result.UserDN, result.Statut,
+			fmt.Sprintf("Type: %s", params.Type))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+
+	s.logonScriptsResultatFragment(w, langue, result)
+}
+
+// logonScriptsResultatFragment rend le fragment HTML du résultat.
+func (s *Server) logonScriptsResultatFragment(w http.ResponseWriter, langue string, result *ad.ScriptResult) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "logonscripts.resultat") + `</h2>`)
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "logonscripts.utilisateur"), result.UserDN))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "logonscripts.type"), result.Type))
+	if result.Contenu != "" {
+		b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "logonscripts.contenu"), result.Contenu))
+	}
+	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "logonscripts.statut"), result.Statut))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "logonscripts.detail"), result.Detaille))
 	b.WriteString(`</div>`)
 	w.Write([]byte(b.String()))
 }

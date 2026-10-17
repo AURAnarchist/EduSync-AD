@@ -69,6 +69,8 @@ Commandes :
   profils execute         Applique un profil utilisateur (JSON)
   logon-hours simulate    Simule les heures de connexion (JSON)
   logon-hours execute     Applique les heures de connexion (JSON)
+  logon-scripts simulate  Simule l'application d'un script (JSON)
+  logon-scripts execute   Applique un script (JSON)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -115,6 +117,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdProfils(args[1:], stdout, stderr)
 	case "logon-hours":
 		return cmdLogonHours(args[1:], stdout, stderr)
+	case "logon-scripts":
+		return cmdLogonScripts(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

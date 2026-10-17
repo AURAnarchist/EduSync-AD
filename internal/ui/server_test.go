@@ -568,3 +568,61 @@ func TestLogonHoursSansSession(t *testing.T) {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
 }
+
+// ─── Scripts logon/logoff (M15) ───────────────────────────────────────────────
+
+func TestLogonScriptsPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/logon-scripts", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Scripts logon/logoff") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestLogonScriptsSimule(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/logon-scripts/simulate", url.Values{
+		"user_dn": {"CN=Jean Dupont,OU=Users,DC=X"},
+		"type":    {"bat"},
+		"contenu": {"echo hello"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", w.Body.String())
+	}
+}
+
+func TestLogonScriptsExecute(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/logon-scripts/execute", url.Values{
+		"user_dn": {"CN=Jean Dupont,OU=Users,DC=X"},
+		"type":    {"powershell"},
+		"contenu": {"Write-Host hello"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", w.Body.String())
+	}
+}
+
+func TestLogonScriptsSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/logon-scripts", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}

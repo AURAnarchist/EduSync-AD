@@ -1,0 +1,81 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "logonscripts.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "logonscripts.sous_titre"}}</p>
+  </div>
+
+  <!-- Formulaire de définition du script -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "logonscripts.action"}}</h2>
+
+    <form method="post" action="/app/logon-scripts/simulate"
+          hx-post="/app/logon-scripts/simulate" hx-target="#ls-resultat-sim" hx-swap="innerHTML"
+          class="mt-4 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="ls_user_dn" class="block text-sm font-medium">{{tr .Langue "logonscripts.user_dn"}}</label>
+          <input id="ls_user_dn" name="user_dn" type="text" placeholder="CN=Nom Prenom,OU=...,DC=..."
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <p class="mt-1 text-xs text-slate-500">{{tr .Langue "logonscripts.user_dn_aide"}}</p>
+        </div>
+        <div class="flex items-end">
+          <label for="ls_type" class="block text-sm font-medium mb-2">{{tr .Langue "logonscripts.type"}}</label>
+          <select id="ls_type" name="type"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="bat">{{tr .Langue "logonscripts.type_bat"}}</option>
+            <option value="powershell">{{tr .Langue "logonscripts.type_powershell"}}</option>
+            <option value="vbs">{{tr .Langue "logonscripts.type_vbs"}}</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label for="ls_contenu" class="block text-sm font-medium">{{tr .Langue "logonscripts.contenu"}}</label>
+        <textarea id="ls_contenu" name="contenu" rows="6"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-mono dark:border-slate-700 dark:bg-slate-800">{{tr .Langue "logonscripts.exemple_script"}}</textarea>
+        <p class="mt-1 text-xs text-slate-500">{{tr .Langue "logonscripts.variables_aide"}}</p>
+      </div>
+
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "logonscripts.simuler"}}
+      </button>
+    </form>
+
+    <form method="post" action="/app/logon-scripts/execute"
+          hx-post="/app/logon-scripts/execute" hx-target="#ls-resultat-exec" hx-swap="innerHTML"
+          class="mt-4 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="ls_exec_user_dn" class="block text-sm font-medium">{{tr .Langue "logonscripts.user_dn"}}</label>
+          <input id="ls_exec_user_dn" name="user_dn" type="text" placeholder="CN=Nom Prenom,OU=...,DC=..."
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+        <div class="flex items-end">
+          <label for="ls_exec_type" class="block text-sm font-medium mb-2">{{tr .Langue "logonscripts.type"}}</label>
+          <select id="ls_exec_type" name="type"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="bat">{{tr .Langue "logonscripts.type_bat"}}</option>
+            <option value="powershell">{{tr .Langue "logonscripts.type_powershell"}}</option>
+            <option value="vbs">{{tr .Langue "logonscripts.type_vbs"}}</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label for="ls_exec_contenu" class="block text-sm font-medium">{{tr .Langue "logonscripts.contenu"}}</label>
+        <textarea id="ls_exec_contenu" name="contenu" rows="6"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-mono dark:border-slate-700 dark:bg-slate-800"></textarea>
+      </div>
+
+      <button type="submit"
+              class="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500">
+        {{tr .Langue "logonscripts.executer"}}
+      </button>
+    </form>
+
+    <div id="ls-resultat-sim" class="mt-4"></div>
+    <div id="ls-resultat-exec" class="mt-4"></div>
+  </div>
+</div>
+{{end}}
