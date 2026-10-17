@@ -488,6 +488,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/quotas/simulate", s.requireAuthSession(s.quotasSimulate))
 	mux.HandleFunc("POST /app/quotas/execute", s.requireAuthSession(s.quotasExecute))
 
+	// Dossiers personnels (M17)
+	mux.HandleFunc("GET /app/homedirs", s.requireAuthSession(s.pageHomeDirs))
+	mux.HandleFunc("POST /app/homedirs/simulate", s.requireAuthSession(s.homeDirsSimulate))
+	mux.HandleFunc("POST /app/homedirs/execute", s.requireAuthSession(s.homeDirsExecute))
+
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
 }
@@ -3299,6 +3304,128 @@ func (s *Server) quotasResultatFragment(w http.ResponseWriter, langue string, re
 	}
 	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "quotas.statut"), result.Statut))
 	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "quotas.detail"), result.Detaille))
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Dossiers personnels (M17) ──────────────────────────────────────
+
+func (s *Server) pageHomeDirs(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "homedirs.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "homedirs.html", d)
+}
+
+func (s *Server) homeDirsSimulate(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	typ := ad.HomeDirType(strings.TrimSpace(r.FormValue("type")))
+	chemin := strings.TrimSpace(r.FormValue("chemin"))
+	LettreLecteur := strings.TrimSpace(r.FormValue("lettre_lecteur"))
+
+	params := ad.HomeDirParams{
+		UserDN:        userDN,
+		Type:          typ,
+		Chemin:        chemin,
+		LettreLecteur: LettreLecteur,
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.homeDirsResultatFragment(w, langue, &ad.HomeDirResult{
+			UserDN:        params.UserDN,
+			Type:          params.Type,
+			Chemin:        params.Chemin,
+			LettreLecteur: params.LettreLecteur,
+			Statut:        "attente_ad",
+			Detaille:      "connexion AD requise pour vérifier l'existence du compte",
+		})
+		return
+	}
+
+	result, err := pool.HomeDirSimulate(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	s.homeDirsResultatFragment(w, langue, result)
+}
+
+func (s *Server) homeDirsExecute(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	typ := ad.HomeDirType(strings.TrimSpace(r.FormValue("type")))
+	chemin := strings.TrimSpace(r.FormValue("chemin"))
+	LettreLecteur := strings.TrimSpace(r.FormValue("lettre_lecteur"))
+
+	params := ad.HomeDirParams{
+		UserDN:        userDN,
+		Type:          typ,
+		Chemin:        chemin,
+		LettreLecteur: LettreLecteur,
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.homeDirsResultatFragment(w, langue, &ad.HomeDirResult{
+			UserDN:        params.UserDN,
+			Type:          params.Type,
+			Chemin:        params.Chemin,
+			LettreLecteur: params.LettreLecteur,
+			Statut:        "attente_ad",
+			Detaille:      "connexion AD requise pour appliquer le dossier personnel",
+		})
+		return
+	}
+
+	result, err := pool.HomeDirExecute(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	if s.journal != nil {
+		entree := nouvelleEntree("home_dir", result.UserDN, result.Statut,
+			fmt.Sprintf("Type: %s, chemin: %s, lecteur: %s", params.Type, params.Chemin, params.LettreLecteur))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+
+	s.homeDirsResultatFragment(w, langue, result)
+}
+
+// homeDirsResultatFragment rend le fragment HTML du résultat.
+func (s *Server) homeDirsResultatFragment(w http.ResponseWriter, langue string, result *ad.HomeDirResult) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "homedirs.resultat") + `</h2>`)
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "homedirs.utilisateur"), result.UserDN))
+	if result.SAMAccountName != "" {
+		b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "homedirs.identifiant"), result.SAMAccountName))
+	}
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "homedirs.type"), result.Type))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "homedirs.chemin"), result.Chemin))
+	if result.LettreLecteur != "" {
+		b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "homedirs.lettre_lecteur"), result.LettreLecteur))
+	}
+	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "homedirs.statut"), result.Statut))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "homedirs.detail"), result.Detaille))
 	b.WriteString(`</div>`)
 	w.Write([]byte(b.String()))
 }

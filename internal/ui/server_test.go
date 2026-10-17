@@ -684,3 +684,63 @@ func TestQuotasSansSession(t *testing.T) {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
 }
+
+// ─── Dossiers personnels (M17) ───────────────────────────────────────────────
+
+func TestHomeDirsPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/homedirs", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Dossiers personnels") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestHomeDirsSimule(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/homedirs/simulate", url.Values{
+		"user_dn":        {"CN=Jean Dupont,OU=Users,DC=X"},
+		"type":           {"standard"},
+		"chemin":         {"\\\\srv\\homes\\%USERNAME%"},
+		"lettre_lecteur": {"H"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", w.Body.String())
+	}
+}
+
+func TestHomeDirsExecute(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/homedirs/execute", url.Values{
+		"user_dn":        {"CN=Jean Dupont,OU=Users,DC=X"},
+		"type":           {"standard"},
+		"chemin":         {"\\\\srv\\homes\\%USERNAME%"},
+		"lettre_lecteur": {"H"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", w.Body.String())
+	}
+}
+
+func TestHomeDirsSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/homedirs", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}

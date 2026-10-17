@@ -266,7 +266,7 @@ edusync-ad/
 | **M14 — Quotas de disque (FSRM)** | Quota par OU/groupe, application auto, rapport CSV | ✅ Livré et testé (B4) |
 | **M15 — Scripts logon/logoff** | Éditeur bat/powershell/vbs, variables, déploiement `scriptPath`/GPO | ✅ Livré et testé (B3) |
 | **M16 — Heures de connexion** | Grille 24h × 7j, préréglages, attribut `logonHours` | ✅ Livré et testé (B2) |
-| **M17 — Dossiers personnels** | Création auto `\\srv\homes\%USERNAME%`, droits NTFS, lettre lecteur | ⬜ |
+| **M17 — Dossiers personnels** | Création auto `\\srv\homes\%USERNAME%`, droits NTFS, lettre lecteur | ✅ Livré et testé (B5) |
 | **M18 — Espaces partagés par classe** | Partage SMB + NTFS à la création du groupe de classe, sync membres ↔ droits | ⬜ |
 | **M19 — Microsoft 365 / Entra ID** | App registration, users cloud + licences, groupes/Teams, photos | ⬜ |
 | **M20 — Exchange** | Boîtes aux lettres, aliases/proxy, policies, quotas | ⬜ |
@@ -739,6 +739,7 @@ Ajoute le support multisite (multi-domaine/forêt).
 15. **Lot B, B2** : ✅ fait — M16 Heures de connexion : `internal/ad/logon_hours.go` (grille 7×24, attribut logonHours 21 octets, préréglages cours/admin/personnalisé), routes UI `/app/logon-hours`, gabarit `logon_hours.html`, CLI `logon-hours simulate/execute`, i18n fr/en, tests unitaires.
 16. **Lot B, B3** : ✅ fait — M15 Scripts logon/logoff : `internal/ad/logon_scripts.go` (bat/powershell/vbs, variables %USERNAME%/%FULLNAME%/%OU%/%GROUP%/%EMAIL%/%HOMEDIR%, attribut scriptPath), routes UI `/app/logon-scripts`, gabarit `logon_scripts.html`, CLI `logon-scripts simulate/execute`, i18n fr/en, tests unitaires.
 17. **Lot B, B4** : ✅ fait — M14 Quotas de disque : `internal/ad/quota.go` (grille quota, attribut msDS-QuotaAmount, seuils alerte/blocage, formatage taille), routes UI `/app/quotas`, gabarit `quotas.html`, CLI `quotas simulate/execute`, i18n fr/en, tests unitaires.
+18. **Lot B, B5** : ✅ fait — M17 Dossiers personnels : `internal/ad/homedirs.go` (chemin UNC \\srv\homes\%USERNAME%, lettre de lecteur, attributs homeDirectory/homeDrive), routes UI `/app/homedirs`, gabarit `homedirs.html`, CLI `homedirs simulate/execute`, i18n fr/en, tests unitaires.
 
 **Priorité 2 — releases :**
 

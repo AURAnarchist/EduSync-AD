@@ -73,6 +73,8 @@ Commandes :
   logon-scripts execute   Applique un script (JSON)
   quotas simulate         Simule un quota de disque (JSON)
   quotas execute          Applique un quota de disque (JSON)
+  homedirs simulate       Simule un dossier personnel (JSON)
+  homedirs execute        Applique un dossier personnel (JSON)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -123,6 +125,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdLogonScripts(args[1:], stdout, stderr)
 	case "quotas":
 		return cmdQuotas(args[1:], stdout, stderr)
+	case "homedirs":
+		return cmdHomeDirs(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:
