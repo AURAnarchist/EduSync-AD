@@ -483,6 +483,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/logon-scripts/simulate", s.requireAuthSession(s.logonScriptsSimulate))
 	mux.HandleFunc("POST /app/logon-scripts/execute", s.requireAuthSession(s.logonScriptsExecute))
 
+	// Quotas de disque (M14)
+	mux.HandleFunc("GET /app/quotas", s.requireAuthSession(s.pageQuotas))
+	mux.HandleFunc("POST /app/quotas/simulate", s.requireAuthSession(s.quotasSimulate))
+	mux.HandleFunc("POST /app/quotas/execute", s.requireAuthSession(s.quotasExecute))
+
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
 }
@@ -3162,6 +3167,138 @@ func (s *Server) logonScriptsResultatFragment(w http.ResponseWriter, langue stri
 	}
 	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "logonscripts.statut"), result.Statut))
 	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "logonscripts.detail"), result.Detaille))
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Quotas de disque (M14) ──────────────────────────────────────
+
+func (s *Server) pageQuotas(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "quotas.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "quotas.html", d)
+}
+
+func (s *Server) quotasSimulate(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	ou := strings.TrimSpace(r.FormValue("ou"))
+	typ := ad.QuotaType(strings.TrimSpace(r.FormValue("type")))
+	limite := int64(0)
+	fmt.Sscanf(strings.TrimSpace(r.FormValue("limite")), "%d", &limite)
+	seuil := ad.QuotaSeuil(strings.TrimSpace(r.FormValue("seuil")))
+
+	params := ad.QuotaParams{
+		UserDN: userDN,
+		OU:     ou,
+		Type:   typ,
+		Limite: limite,
+		Seuil:  seuil,
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.quotasResultatFragment(w, langue, &ad.QuotaResult{
+			UserDN:   params.UserDN,
+			OU:       params.OU,
+			Type:     params.Type,
+			Limite:   params.Limite,
+			Seuil:    params.Seuil,
+			Statut:   "attente_ad",
+			Detaille: "connexion AD requise pour vérifier l'existence du compte",
+		})
+		return
+	}
+
+	result, err := pool.QuotaSimulate(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	s.quotasResultatFragment(w, langue, result)
+}
+
+func (s *Server) quotasExecute(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	ou := strings.TrimSpace(r.FormValue("ou"))
+	typ := ad.QuotaType(strings.TrimSpace(r.FormValue("type")))
+	limite := int64(0)
+	fmt.Sscanf(strings.TrimSpace(r.FormValue("limite")), "%d", &limite)
+	seuil := ad.QuotaSeuil(strings.TrimSpace(r.FormValue("seuil")))
+
+	params := ad.QuotaParams{
+		UserDN: userDN,
+		OU:     ou,
+		Type:   typ,
+		Limite: limite,
+		Seuil:  seuil,
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.quotasResultatFragment(w, langue, &ad.QuotaResult{
+			UserDN:   params.UserDN,
+			OU:       params.OU,
+			Type:     params.Type,
+			Limite:   params.Limite,
+			Seuil:    params.Seuil,
+			Statut:   "attente_ad",
+			Detaille: "connexion AD requise pour appliquer le quota",
+		})
+		return
+	}
+
+	result, err := pool.QuotaExecute(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	if s.journal != nil {
+		entree := nouvelleEntree("quota", result.UserDN, result.Statut,
+			fmt.Sprintf("Type: %s, limite: %s, OU: %s", params.Type, ad.FormateTaille(params.Limite), params.OU))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+
+	s.quotasResultatFragment(w, langue, result)
+}
+
+// quotasResultatFragment rend le fragment HTML du résultat.
+func (s *Server) quotasResultatFragment(w http.ResponseWriter, langue string, result *ad.QuotaResult) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "quotas.resultat") + `</h2>`)
+	if result.UserDN != "" {
+		b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "quotas.utilisateur"), result.UserDN))
+	}
+	if result.OU != "" {
+		b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "quotas.ou"), result.OU))
+	}
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "quotas.type"), result.Type))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "quotas.limite"), ad.FormateTaille(result.Limite)))
+	if result.Seuil != "" {
+		b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "quotas.seuil"), result.Seuil))
+	}
+	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "quotas.statut"), result.Statut))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "quotas.detail"), result.Detaille))
 	b.WriteString(`</div>`)
 	w.Write([]byte(b.String()))
 }

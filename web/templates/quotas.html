@@ -1,0 +1,96 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "quotas.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "quotas.sous_titre"}}</p>
+  </div>
+
+  <!-- Formulaire de définition du quota -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "quotas.action"}}</h2>
+
+    <form method="post" action="/app/quotas/simulate"
+          hx-post="/app/quotas/simulate" hx-target="#qt-resultat-sim" hx-swap="innerHTML"
+          class="mt-4 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="qt_user_dn" class="block text-sm font-medium">{{tr .Langue "quotas.user_dn"}}</label>
+          <input id="qt_user_dn" name="user_dn" type="text" placeholder="CN=Nom Prenom,OU=...,DC=..."
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <p class="mt-1 text-xs text-slate-500">{{tr .Langue "quotas.user_dn_aide"}}</p>
+        </div>
+        <div>
+          <label for="qt_ou" class="block text-sm font-medium">{{tr .Langue "quotas.ou"}}</label>
+          <input id="qt_ou" name="ou" type="text" placeholder="OU=Eleves,DC=EDUSYNC,DC=LOCAL"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <p class="mt-1 text-xs text-slate-500">{{tr .Langue "quotas.ou_aide"}}</p>
+        </div>
+        <div class="flex items-end">
+          <label for="qt_type" class="block text-sm font-medium mb-2">{{tr .Langue "quotas.type"}}</label>
+          <select id="qt_type" name="type"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="disque">{{tr .Langue "quotas.type_disque"}}</option>
+            <option value="fichiers">{{tr .Langue "quotas.type_fichiers"}}</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label for="qt_limite" class="block text-sm font-medium">{{tr .Langue "quotas.limite"}}</label>
+          <input id="qt_limite" name="limite" type="number" value="1073741824" min="0"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <p class="mt-1 text-xs text-slate-500">{{tr .Langue "quotas.limite_aide"}}</p>
+        </div>
+        <div class="flex items-end">
+          <label for="qt_seuil" class="block text-sm font-medium mb-2">{{tr .Langue "quotas.seuil"}}</label>
+          <select id="qt_seuil" name="seuil"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="">{{tr .Langue "quotas.seuil_aucun"}}</option>
+            <option value="alerte">{{tr .Langue "quotas.seuil_alerte"}}</option>
+            <option value="blocage">{{tr .Langue "quotas.seuil_blocage"}}</option>
+          </select>
+        </div>
+      </div>
+
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "quotas.simuler"}}
+      </button>
+    </form>
+
+    <form method="post" action="/app/quotas/execute"
+          hx-post="/app/quotas/execute" hx-target="#qt-resultat-exec" hx-swap="innerHTML"
+          class="mt-4 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="qt_exec_user_dn" class="block text-sm font-medium">{{tr .Langue "quotas.user_dn"}}</label>
+          <input id="qt_exec_user_dn" name="user_dn" type="text" placeholder="CN=Nom Prenom,OU=...,DC=..."
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+        <div>
+          <label for="qt_exec_limite" class="block text-sm font-medium">{{tr .Langue "quotas.limite"}}</label>
+          <input id="qt_exec_limite" name="limite" type="number" value="1073741824" min="0"
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+        <div class="flex items-end">
+          <label for="qt_exec_type" class="block text-sm font-medium mb-2">{{tr .Langue "quotas.type"}}</label>
+          <select id="qt_exec_type" name="type"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="disque">{{tr .Langue "quotas.type_disque"}}</option>
+            <option value="fichiers">{{tr .Langue "quotas.type_fichiers"}}</option>
+          </select>
+        </div>
+      </div>
+
+      <button type="submit"
+              class="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500">
+        {{tr .Langue "quotas.executer"}}
+      </button>
+    </form>
+
+    <div id="qt-resultat-sim" class="mt-4"></div>
+    <div id="qt-resultat-exec" class="mt-4"></div>
+  </div>
+</div>
+{{end}}

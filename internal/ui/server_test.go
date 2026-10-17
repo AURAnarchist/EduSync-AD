@@ -626,3 +626,61 @@ func TestLogonScriptsSansSession(t *testing.T) {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
 }
+
+// ─── Quotas de disque (M14) ───────────────────────────────────────────────
+
+func TestQuotasPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/quotas", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Quotas de disque") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestQuotasSimule(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/quotas/simulate", url.Values{
+		"user_dn": {"CN=Jean Dupont,OU=Users,DC=X"},
+		"type":    {"disque"},
+		"limite":  {"1073741824"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", w.Body.String())
+	}
+}
+
+func TestQuotasExecute(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "POST", "/app/quotas/execute", url.Values{
+		"user_dn": {"CN=Jean Dupont,OU=Users,DC=X"},
+		"type":    {"disque"},
+		"limite":  {"536870912"},
+	}, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "attente_ad") {
+		t.Errorf("statut attendu attente_ad, body: %s", w.Body.String())
+	}
+}
+
+func TestQuotasSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/quotas", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
