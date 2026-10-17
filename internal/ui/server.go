@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/estemobs/EduSync-AD/internal/ad"
+	"github.com/estemobs/EduSync-AD/internal/api"
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/classspaces"
 	"github.com/estemobs/EduSync-AD/internal/config"
@@ -203,6 +204,22 @@ type PageData struct {
 	PortailURL          string
 	PortailCheminConfig string
 	PortailCheminBase   string
+
+	// API REST et webhooks (M28)
+	APIConfig           api.Config
+	APICles             []CleAPIVue
+	APIWebhooks         []WebhookVue
+	APILivraisons       []LivraisonVue
+	APINombreLivraisons int
+	APIEnEcoute         bool
+	APIURL              string
+	APICheminConfig     string
+	APICheminCles       string
+	APICheminWebhooks   string
+	APICheminLivraisons string
+	APIPermissions      []api.PermissionLookup
+	APIRoutes           []api.Route
+	APIEvenements       []string
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -360,6 +377,10 @@ type Server struct {
 	// Serveur HTTP du portail auto-service (M27), partagé par l'application.
 	portailMu sync.Mutex
 	portail   *portailEnCours
+
+	// Serveur de l'API REST et dispatcher des webhooks (M28).
+	apiMu sync.Mutex
+	api   *apiEnCours
 }
 
 // New prépare le serveur d'interface (templates, assets, journal).
@@ -470,6 +491,7 @@ func New(opts Options) (*Server, error) {
 // Close libère la base du journal.
 func (s *Server) Close() error {
 	s.fermerPortail()
+	s.fermerAPI()
 	if s.journal == nil {
 		return nil
 	}
@@ -648,6 +670,18 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/portal/approuver", s.requireAuthSession(s.portailApprouver))
 	mux.HandleFunc("POST /app/portal/refuser", s.requireAuthSession(s.portailRefuser))
 	mux.HandleFunc("GET /app/portal/etat", s.requireAuthSession(s.portailEtat))
+
+	mux.HandleFunc("GET /app/api", s.requireAuthSession(s.pageAPI))
+	mux.HandleFunc("POST /app/api/config", s.requireAuthSession(s.apiConfigForm))
+	mux.HandleFunc("POST /app/api/demarrer", s.requireAuthSession(s.apiDemarrer))
+	mux.HandleFunc("POST /app/api/arreter", s.requireAuthSession(s.apiArreter))
+	mux.HandleFunc("GET /app/api/etat", s.requireAuthSession(s.apiEtat))
+	mux.HandleFunc("POST /app/api/cles/creer", s.requireAuthSession(s.apiCreerCle))
+	mux.HandleFunc("POST /app/api/cles/revoquer", s.requireAuthSession(s.apiRevoquerCle))
+	mux.HandleFunc("POST /app/api/cles/supprimer", s.requireAuthSession(s.apiSupprimerCle))
+	mux.HandleFunc("POST /app/api/webhooks/ajouter", s.requireAuthSession(s.apiAjouterWebhook))
+	mux.HandleFunc("POST /app/api/webhooks/supprimer", s.requireAuthSession(s.apiSupprimerWebhook))
+	mux.HandleFunc("POST /app/api/webhooks/tester", s.requireAuthSession(s.apiTesterWebhook))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux

@@ -393,6 +393,12 @@ func (s *Service) ApprouverDemande(demandeID string) (map[string]string, error) 
 		return nil, nouvelleErreurPortail(
 			"Renseignez l'OU d'accueil du portail avant de valider une demande.")
 	}
+	if s.Annuaire == nil {
+		// Cas du serveur d'API démarré sans session AD : la validation reste
+		// possible depuis l'application desktop, pas depuis ce processus.
+		return nil, nouvelleErreurPortail(
+			"Aucune connexion à l'annuaire n'est disponible pour créer le compte.")
+	}
 
 	typeCompte := models.AccountEleve
 	if demande.Profil == ProfilPersonnel {

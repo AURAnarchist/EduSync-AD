@@ -145,6 +145,21 @@ Commandes :
   portal status            État du portail (JSON)
   portal refuse            Refuse une demande de création de compte
   portal approve           Valide une demande (crée le compte dans l'AD)
+  api config               Affiche/enregistre les réglages de l'API REST (M28)
+  api keys list            Liste les clés d'API enregistrées
+  api keys create          Crée une clé d'API (affichée une seule fois)
+  api keys revoke          Révoque une clé d'API
+  api keys remove          Supprime une clé d'API
+  api keys permissions     Liste les permissions disponibles
+  api routes               Liste les routes de l'API (JSON)
+  api spec                 Écrit le document OpenAPI (api-spec.json)
+  api webhooks list        Liste les webhooks enregistrés
+  api webhooks add         Ajoute un webhook (secret chiffré)
+  api webhooks remove      Supprime un webhook
+  api webhooks deliveries  Liste le journal des livraisons
+  api webhooks test        Envoie un événement de test à un webhook
+  api webhooks events      Liste les événements disponibles
+  api serve                Démarre le serveur de l'API (Ctrl-C pour arrêter)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -223,6 +238,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdGroupTemplates(args[1:], stdout, stderr)
 	case "portal":
 		return cmdPortal(args[1:], stdout, stderr)
+	case "api":
+		return cmdAPI(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

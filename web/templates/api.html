@@ -1,0 +1,302 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "api.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "api.sous_titre"}}</p>
+  </div>
+
+  {{if .Erreurs}}
+  <div class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">
+    <ul class="list-disc pl-5">
+      {{range .Erreurs}}<li>{{.}}</li>{{end}}
+    </ul>
+  </div>
+  {{end}}
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-lg font-semibold">{{tr .Langue "api.service"}}</h2>
+      <div class="flex items-center gap-2">
+        <button type="button"
+                hx-post="/app/api/demarrer" hx-target="#api-result" hx-swap="innerHTML"
+                class="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "api.demarrer"}}
+        </button>
+        <button type="button"
+                hx-post="/app/api/arreter" hx-target="#api-result" hx-swap="innerHTML"
+                class="rounded-md border border-rose-300 px-3 py-1.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-700 dark:hover:bg-rose-950">
+          {{tr .Langue "api.arreter"}}
+        </button>
+      </div>
+    </div>
+    <p class="mt-2 text-sm">
+      <span class="text-slate-500">{{tr .Langue "api.etat"}} :</span>
+      {{if .APIEnEcoute}}
+        <span class="text-emerald-600 dark:text-emerald-400">{{tr .Langue "api.en_ecoute"}}</span>
+        — <a class="font-mono underline" href="{{.APIURL}}/openapi.json">{{.APIURL}}</a>
+      {{else}}
+        <span class="text-rose-600 dark:text-rose-400">{{tr .Langue "api.arrete_etat"}}</span>
+      {{end}}
+    </p>
+    <p class="mt-1 text-xs text-slate-500">
+      {{tr .Langue "api.chemins"}} :
+      <span class="font-mono">{{.APICheminConfig}}</span>,
+      <span class="font-mono">{{.APICheminCles}}</span>,
+      <span class="font-mono">{{.APICheminWebhooks}}</span>,
+      <span class="font-mono">{{.APICheminLivraisons}}</span>
+    </p>
+    <div id="api-result" class="mt-3"></div>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "api.cles_titre"}}</h2>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "api.cles_aide"}}</p>
+
+    {{if .APICles}}
+    <div class="mt-3 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-xs uppercase text-slate-500">
+          <tr>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_id"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_nom"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_prefixe"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_permissions"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_statut"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_dernier_usage"}}</th>
+            <th class="py-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .APICles}}
+          <tr class="border-t border-slate-100 align-top dark:border-slate-800">
+            <td class="py-2 pr-3 font-mono text-xs">{{.ID}}</td>
+            <td class="py-2 pr-3">{{.Nom}}</td>
+            <td class="py-2 pr-3 font-mono text-xs">{{.Prefixe}}…</td>
+            <td class="py-2 pr-3 font-mono text-xs">{{range .Permissions}}{{.}} {{end}}</td>
+            <td class="py-2 pr-3 text-xs">
+              {{if .Active}}{{tr $.Langue "api.statut_active"}}{{else}}{{tr $.Langue "api.statut_revoquee"}}{{end}}
+            </td>
+            <td class="py-2 pr-3 text-xs">{{if .DernierUsage}}{{.DernierUsage}}{{else}}{{tr $.Langue "api.jamais"}}{{end}}</td>
+            <td class="py-2 text-right whitespace-nowrap">
+              <button type="button"
+                      hx-post="/app/api/cles/revoquer" hx-vals='{"id":"{{.ID}}"}'
+                      hx-target="#api-result" hx-swap="innerHTML"
+                      class="rounded-md border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:hover:bg-amber-950">
+                {{tr $.Langue "api.revoquer"}}
+              </button>
+              <button type="button"
+                      hx-post="/app/api/cles/supprimer" hx-vals='{"id":"{{.ID}}"}'
+                      hx-target="#api-result" hx-swap="innerHTML"
+                      class="rounded-md border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-700 dark:hover:bg-rose-950">
+                {{tr $.Langue "api.supprimer"}}
+              </button>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="mt-3 text-sm text-slate-500">{{tr .Langue "api.aucune_cle_liste"}}</p>
+    {{end}}
+
+    <form hx-post="/app/api/cles/creer" hx-target="#api-result" hx-swap="innerHTML"
+          class="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3 dark:border-slate-800">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "api.champ_nom"}}</span>
+        <input name="nom" type="text" required placeholder="{{tr .Langue "api.champ_nom_exemple"}}"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "api.champ_jours"}}</span>
+        <input name="jours" type="number" min="0" max="3650" value="0"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <div class="text-sm sm:col-span-3">
+        <span class="text-slate-500">{{tr .Langue "api.champ_permissions"}}</span>
+        <div class="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+          {{range .APIPermissions}}
+          <label class="flex items-start gap-2 text-xs">
+            <input name="permissions" type="checkbox" value="{{.Code}}" {{if eq .Code "*"}}checked{{end}}>
+            <span><span class="font-mono">{{.Code}}</span> — {{.Libelle}}</span>
+          </label>
+          {{end}}
+        </div>
+      </div>
+      <div class="sm:col-span-3">
+        <button type="submit"
+                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "api.creer_cle"}}
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "api.webhooks_titre"}}</h2>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "api.webhooks_aide"}}</p>
+
+    {{if .APIWebhooks}}
+    <div class="mt-3 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-xs uppercase text-slate-500">
+          <tr>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_id"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_nom"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_url"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_evenements"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_retrait"}}</th>
+            <th class="py-1"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .APIWebhooks}}
+          <tr class="border-t border-slate-100 align-top dark:border-slate-800">
+            <td class="py-2 pr-3 font-mono text-xs">{{.ID}}</td>
+            <td class="py-2 pr-3">{{.Nom}}</td>
+            <td class="py-2 pr-3 font-mono text-xs">{{.URL}}</td>
+            <td class="py-2 pr-3 font-mono text-xs">{{range .Evenements}}{{.}} {{end}}</td>
+            <td class="py-2 pr-3 text-xs">{{.PolitiqueRetrai}} ({{.RetraitsMax}})</td>
+            <td class="py-2 text-right whitespace-nowrap">
+              <button type="button"
+                      hx-post="/app/api/webhooks/tester" hx-vals='{"id":"{{.ID}}","event":"system.startup"}'
+                      hx-target="#api-result" hx-swap="innerHTML"
+                      class="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+                {{tr $.Langue "api.tester"}}
+              </button>
+              <button type="button"
+                      hx-post="/app/api/webhooks/supprimer" hx-vals='{"id":"{{.ID}}"}'
+                      hx-target="#api-result" hx-swap="innerHTML"
+                      class="rounded-md border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-700 dark:hover:bg-rose-950">
+                {{tr $.Langue "api.supprimer"}}
+              </button>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="mt-3 text-sm text-slate-500">{{tr .Langue "api.aucun_webhook"}}</p>
+    {{end}}
+
+    <form hx-post="/app/api/webhooks/ajouter" hx-target="#api-result" hx-swap="innerHTML"
+          class="mt-4 grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-2 dark:border-slate-800">
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "api.champ_nom"}}</span>
+        <input name="nom" type="text" required
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "api.col_url"}}</span>
+        <input name="url" type="url" required placeholder="https://supervision.example/hook"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "api.col_evenements"}}</span>
+        <input name="events" type="text" list="api-evenements" required placeholder="user.created,user.deleted"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+        <datalist id="api-evenements">
+          {{range .APIEvenements}}<option value="{{.}}"></option>{{end}}
+        </datalist>
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "api.champ_secret"}}</span>
+        <input name="secret" type="password" autocomplete="new-password"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-sm dark:border-slate-700 dark:bg-slate-800">
+      </label>
+      <label class="text-sm">
+        <span class="text-slate-500">{{tr .Langue "api.champ_retrait"}}</span>
+        <select name="retry_policy"
+                class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <option value="exponential">exponential</option>
+          <option value="fixed">fixed</option>
+          <option value="none">none</option>
+        </select>
+      </label>
+      <label class="flex items-center gap-2 self-end text-sm">
+        <input name="desactive" type="checkbox" value="1">
+        <span>{{tr .Langue "api.champ_desactive"}}</span>
+      </label>
+      <div class="sm:col-span-2">
+        <button type="submit"
+                class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+          {{tr .Langue "api.ajouter_webhook"}}
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "api.livraisons_titre"}}</h2>
+    <p class="mt-1 text-xs text-slate-500">
+      {{tr .Langue "api.livraisons_total"}} : <span class="font-mono">{{.APINombreLivraisons}}</span>
+    </p>
+    {{if .APILivraisons}}
+    <div class="mt-3 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-xs uppercase text-slate-500">
+          <tr>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_debut"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_webhook"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_evenement"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_tentative"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_statut"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .APILivraisons}}
+          <tr class="border-t border-slate-100 dark:border-slate-800">
+            <td class="py-2 pr-3 text-xs">{{.CommenceLe}}</td>
+            <td class="py-2 pr-3 font-mono text-xs">{{.WebhookID}}</td>
+            <td class="py-2 pr-3 font-mono text-xs">{{.Evenement}}</td>
+            <td class="py-2 pr-3 text-xs">{{.Tentative}}</td>
+            <td class="py-2 pr-3 text-xs">
+              {{if .Statut}}{{.Statut}}{{else}}—{{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="mt-3 text-sm text-slate-500">{{tr .Langue "api.aucune_livraison"}}</p>
+    {{end}}
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "api.routes_titre"}}</h2>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "api.routes_aide"}}</p>
+    <div class="mt-3 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-xs uppercase text-slate-500">
+          <tr>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_methode"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_chemin"}}</th>
+            <th class="py-1 pr-3">{{tr .Langue "api.col_acces"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .APIRoutes}}
+          <tr class="border-t border-slate-100 dark:border-slate-800">
+            <td class="py-1 pr-3 font-mono text-xs">{{.Methode}}</td>
+            <td class="py-1 pr-3 font-mono text-xs">{{.Motif}}</td>
+            <td class="py-1 pr-3 text-xs">
+              {{if .Publique}}{{tr $.Langue "api.acces_public"}}{{else}}{{tr $.Langue "api.acces_cle"}}{{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "api.aide_titre"}}</h2>
+    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{tr .Langue "api.aide_1"}}</p>
+    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{tr .Langue "api.aide_2"}}</p>
+    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">{{tr .Langue "api.aide_3"}}</p>
+    <p class="mt-2 text-xs text-slate-500">{{tr .Langue "api.aide_4"}}</p>
+  </div>
+</div>
+{{end}}

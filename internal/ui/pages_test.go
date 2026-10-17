@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/estemobs/EduSync-AD/internal/ad"
+	"github.com/estemobs/EduSync-AD/internal/api"
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/grouptemplates"
 	"github.com/estemobs/EduSync-AD/internal/label"
 	"github.com/estemobs/EduSync-AD/internal/mailer"
 	"github.com/estemobs/EduSync-AD/internal/models"
 	"github.com/estemobs/EduSync-AD/internal/portal"
+	"github.com/estemobs/EduSync-AD/internal/webhooks"
 	"github.com/estemobs/EduSync-AD/web"
 )
 
@@ -171,6 +173,45 @@ func donneesTestCompletes() PageData {
 		PortailURL:          "http://127.0.0.1:8787",
 		PortailCheminConfig: "/tmp/portail.json",
 		PortailCheminBase:   "/tmp/portail.db",
+		APIConfig: api.Config{
+			Actif: true, Hote: "127.0.0.1", Port: 8788,
+			CORSOrigines: []string{"*"}, LimiteRPM: 60, Titre: "API Edusync AD",
+		},
+		APICles: []CleAPIVue{{
+			ID: "ak_0123456789ab", Nom: "Supervision", Prefixe: "edusync_abcd",
+			Permissions: []string{"users:read", "audit:read"}, Active: true,
+			Statut: "active", DernierUsage: maintenant,
+		}, {
+			ID: "ak_abcdefabcdef", Nom: "Ancienne clé", Prefixe: "edusync_efgh",
+			Permissions: []string{"*"}, Active: false, Statut: "révoquée",
+		}},
+		APIWebhooks: []WebhookVue{{
+			ID: "w0123456789ab", Nom: "Supervision", URL: "https://supervision.exemple.fr/hook",
+			Evenements: []string{"user.created", "user.deleted"}, Actif: true,
+			PolitiqueRetrai: "exponential", RetraitsMax: 5,
+		}},
+		APILivraisons: []LivraisonVue{{
+			CommenceLe: maintenant, WebhookID: "w0123456789ab",
+			Evenement: "user.created", Tentative: 1, Statut: "HTTP 200",
+		}, {
+			CommenceLe: maintenant, WebhookID: "w0123456789ab",
+			Evenement: "user.deleted", Tentative: 2, Statut: "connexion refusée",
+		}},
+		APINombreLivraisons: 2,
+		APIEnEcoute:         true,
+		APIURL:              "http://127.0.0.1:8788",
+		APICheminConfig:     "/tmp/api.json",
+		APICheminCles:       "/tmp/api_keys.json",
+		APICheminWebhooks:   "/tmp/webhooks.json",
+		APICheminLivraisons: "/tmp/webhook_deliveries.db",
+		APIPermissions:      api.PermissionsStandards,
+		APIEvenements:       webhooks.EvenementsTries(),
+		APIRoutes: []api.Route{
+			{Methode: "GET", Motif: "/api/v1/users"},
+			{Methode: "POST", Motif: "/api/v1/users"},
+			{Methode: "GET", Motif: "/api/v1/webhooks/{webhook_id}"},
+			{Methode: "GET", Motif: "/api/v1/openapi.json", Publique: true},
+		},
 	}
 }
 
