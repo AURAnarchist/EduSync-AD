@@ -493,6 +493,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/homedirs/simulate", s.requireAuthSession(s.homeDirsSimulate))
 	mux.HandleFunc("POST /app/homedirs/execute", s.requireAuthSession(s.homeDirsExecute))
 
+	// Photos d'identite (M12)
+	mux.HandleFunc("GET /app/photos", s.requireAuthSession(s.pagePhotos))
+	mux.HandleFunc("POST /app/photos/simulate", s.requireAuthSession(s.photosSimulate))
+	mux.HandleFunc("POST /app/photos/execute", s.requireAuthSession(s.photosExecute))
+
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
 }
@@ -3426,6 +3431,115 @@ func (s *Server) homeDirsResultatFragment(w http.ResponseWriter, langue string, 
 	}
 	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "homedirs.statut"), result.Statut))
 	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "homedirs.detail"), result.Detaille))
+	b.WriteString(`</div>`)
+	w.Write([]byte(b.String()))
+}
+
+// ─── Photos d'identite (M12) ──────────────────────────────────────
+
+func (s *Server) pagePhotos(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "photos.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+	s.rendre(w, http.StatusOK, "photos.html", d)
+}
+
+func (s *Server) photosSimulate(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	typ := ad.PhotoType(strings.TrimSpace(r.FormValue("type")))
+	chemin := strings.TrimSpace(r.FormValue("chemin"))
+
+	params := ad.PhotoParams{
+		UserDN: userDN,
+		Type:   typ,
+		Chemin: chemin,
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.photosResultatFragment(w, langue, &ad.PhotoResult{
+			UserDN:   params.UserDN,
+			Type:     params.Type,
+			Statut:   "attente_ad",
+			Detaille: "connexion AD requise pour vérifier l'existence du compte",
+		})
+		return
+	}
+
+	result, err := pool.PhotoSimulate(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	s.photosResultatFragment(w, langue, result)
+}
+
+func (s *Server) photosExecute(w http.ResponseWriter, r *http.Request, sess *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+
+	langue := s.langue(r)
+	userDN := strings.TrimSpace(r.FormValue("user_dn"))
+	typ := ad.PhotoType(strings.TrimSpace(r.FormValue("type")))
+	chemin := strings.TrimSpace(r.FormValue("chemin"))
+
+	params := ad.PhotoParams{
+		UserDN: userDN,
+		Type:   typ,
+		Chemin: chemin,
+	}
+
+	pool, err := s.getPool(sess)
+	if err != nil {
+		s.photosResultatFragment(w, langue, &ad.PhotoResult{
+			UserDN:   params.UserDN,
+			Type:     params.Type,
+			Statut:   "attente_ad",
+			Detaille: "connexion AD requise pour appliquer la photo",
+		})
+		return
+	}
+
+	result, err := pool.PhotoExecute(r.Context(), params)
+	if err != nil {
+		s.erreur(w, Tr(langue, "erreur.connexion_ad")+": "+err.Error())
+		return
+	}
+
+	if s.journal != nil {
+		entree := nouvelleEntree("photo", result.UserDN, result.Statut,
+			fmt.Sprintf("Type: %s, chemin: %s, taille: %s", params.Type, params.Chemin, ad.FormateTaille(params.Taille)))
+		entree.Utilisateur = sess.Utilisateur
+		entree.Domaine = sess.Domaine
+		_ = s.journal.Record(entree)
+	}
+
+	s.photosResultatFragment(w, langue, result)
+}
+
+// photosResultatFragment rend le fragment HTML du résultat.
+func (s *Server) photosResultatFragment(w http.ResponseWriter, langue string, result *ad.PhotoResult) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var b strings.Builder
+	b.WriteString(`<div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">`)
+	b.WriteString(`<h2 class="text-lg font-semibold">` + Tr(langue, "photos.resultat") + `</h2>`)
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "photos.utilisateur"), result.UserDN))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "photos.type_q"), result.Type))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "photos.chemin_q"), result.Chemin))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm"><strong>%s:</strong> %s</p>`, Tr(langue, "photos.taille_q"), ad.FormateTaille(result.Taille)))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm font-medium"><strong>%s:</strong> %s</p>`, Tr(langue, "photos.statut"), result.Statut))
+	b.WriteString(fmt.Sprintf(`<p class="text-sm text-slate-500"><strong>%s:</strong> %s</p>`, Tr(langue, "photos.detail"), result.Detaille))
 	b.WriteString(`</div>`)
 	w.Write([]byte(b.String()))
 }

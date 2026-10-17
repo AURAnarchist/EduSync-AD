@@ -1,0 +1,79 @@
+{{define "content"}}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-2xl font-semibold tracking-tight">{{tr .Langue "photos.titre"}}</h1>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{tr .Langue "photos.sous_titre"}}</p>
+  </div>
+
+  <!-- Formulaire de definition de la photo -->
+  <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <h2 class="text-lg font-semibold">{{tr .Langue "photos.action"}}</h2>
+
+    <form method="post" action="/app/photos/simulate"
+          hx-post="/app/photos/simulate" hx-target="#ph-resultat-sim" hx-swap="innerHTML"
+          class="mt-4 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="ph_user_dn" class="block text-sm font-medium">{{tr .Langue "photos.user_dn"}}</label>
+          <input id="ph_user_dn" name="user_dn" type="text" placeholder="CN=Nom Prenom,OU=...,DC=..."
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+          <p class="mt-1 text-xs text-slate-500">{{tr .Langue "photos.user_dn_aide"}}</p>
+        </div>
+        <div class="flex items-end">
+          <label for="ph_type" class="block text-sm font-medium mb-2">{{tr .Langue "photos.type"}}</label>
+          <select id="ph_type" name="type"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="vignette">{{tr .Langue "photos.type_vignette"}}</option>
+            <option value="passeport">{{tr .Langue "photos.type_passeport"}}</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label for="ph_chemin" class="block text-sm font-medium">{{tr .Langue "photos.chemin"}}</label>
+        <input id="ph_chemin" name="chemin" type="text" placeholder="/photos/jean.jpg"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        <p class="mt-1 text-xs text-slate-500">{{tr .Langue "photos.chemin_aide"}}</p>
+      </div>
+
+      <button type="submit"
+              class="rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
+        {{tr .Langue "photos.simuler"}}
+      </button>
+    </form>
+
+    <form method="post" action="/app/photos/execute"
+          hx-post="/app/photos/execute" hx-target="#ph-resultat-exec" hx-swap="innerHTML"
+          class="mt-4 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label for="ph_exec_user_dn" class="block text-sm font-medium">{{tr .Langue "photos.user_dn"}}</label>
+          <input id="ph_exec_user_dn" name="user_dn" type="text" placeholder="CN=Nom Prenom,OU=...,DC=..."
+                 class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+        </div>
+        <div class="flex items-end">
+          <label for="ph_exec_type" class="block text-sm font-medium mb-2">{{tr .Langue "photos.type"}}</label>
+          <select id="ph_exec_type" name="type"
+                  class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+            <option value="vignette">{{tr .Langue "photos.type_vignette"}}</option>
+            <option value="passeport">{{tr .Langue "photos.type_passeport"}}</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label for="ph_exec_chemin" class="block text-sm font-medium">{{tr .Langue "photos.chemin"}}</label>
+        <input id="ph_exec_chemin" name="chemin" type="text" placeholder="/photos/jean.jpg"
+               class="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800">
+      </div>
+
+      <button type="submit"
+              class="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-500">
+        {{tr .Langue "photos.executer"}}
+      </button>
+    </form>
+
+    <div id="ph-resultat-sim" class="mt-4"></div>
+    <div id="ph-resultat-exec" class="mt-4"></div>
+  </div>
+</div>
+{{end}}

@@ -75,6 +75,8 @@ Commandes :
   quotas execute          Applique un quota de disque (JSON)
   homedirs simulate       Simule un dossier personnel (JSON)
   homedirs execute        Applique un dossier personnel (JSON)
+  photos simulate         Simule l'application d'une photo (JSON)
+  photos execute          Applique une photo (JSON)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -127,6 +129,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdQuotas(args[1:], stdout, stderr)
 	case "homedirs":
 		return cmdHomeDirs(args[1:], stdout, stderr)
+	case "photos":
+		return cmdPhotos(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

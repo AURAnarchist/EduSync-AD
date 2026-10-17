@@ -261,7 +261,7 @@ edusync-ad/
 
 | Module | Fonctionnalités | Statut Go |
 |---|---|---|
-| **M12 — Photos d'identité** | Import manuel/masse/nommage auto, cadrage 3:4 ≤ 200 Ko, vignettes explorateur + étiquettes | ⬜ |
+| **M12 — Photos d'identité** | Import manuel/masse/nommage auto, cadrage 3:4 ≤ 200 Ko, vignettes explorateur + étiquettes | ✅ Livré et testé (B6) |
 | **M13 — Profils utilisateurs** | Itinérant/local/obligatoire par OU ou groupe, variables `%USERNAME%` `%SAM%` `%OU%` | ✅ Livré et testé (B1) |
 | **M14 — Quotas de disque (FSRM)** | Quota par OU/groupe, application auto, rapport CSV | ✅ Livré et testé (B4) |
 | **M15 — Scripts logon/logoff** | Éditeur bat/powershell/vbs, variables, déploiement `scriptPath`/GPO | ✅ Livré et testé (B3) |
@@ -740,6 +740,7 @@ Ajoute le support multisite (multi-domaine/forêt).
 16. **Lot B, B3** : ✅ fait — M15 Scripts logon/logoff : `internal/ad/logon_scripts.go` (bat/powershell/vbs, variables %USERNAME%/%FULLNAME%/%OU%/%GROUP%/%EMAIL%/%HOMEDIR%, attribut scriptPath), routes UI `/app/logon-scripts`, gabarit `logon_scripts.html`, CLI `logon-scripts simulate/execute`, i18n fr/en, tests unitaires.
 17. **Lot B, B4** : ✅ fait — M14 Quotas de disque : `internal/ad/quota.go` (grille quota, attribut msDS-QuotaAmount, seuils alerte/blocage, formatage taille), routes UI `/app/quotas`, gabarit `quotas.html`, CLI `quotas simulate/execute`, i18n fr/en, tests unitaires.
 18. **Lot B, B5** : ✅ fait — M17 Dossiers personnels : `internal/ad/homedirs.go` (chemin UNC \\srv\homes\%USERNAME%, lettre de lecteur, attributs homeDirectory/homeDrive), routes UI `/app/homedirs`, gabarit `homedirs.html`, CLI `homedirs simulate/execute`, i18n fr/en, tests unitaires.
+19. **Lot B, B6** : ✅ fait — M12 Photos d'identité : `internal/ad/photos.go` (attributs thumbnailPhoto/jpegPhoto, lecture du fichier disque, recadrage 3:4 centré + redimensionnement + ré-encodage JPEG, limite 200 Ko, import en masse `<sAMAccountName>.jpg`), routes UI `/app/photos`, gabarit `photos.html`, CLI `photos simulate/execute`, i18n fr/en, tests unitaires.
 
 **Priorité 2 — releases :**
 
