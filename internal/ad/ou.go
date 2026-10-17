@@ -92,6 +92,9 @@ func (p *Pool) OUCreate(ctx context.Context, params OUCreateParams) (*OU, error)
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}
+	if err := p.verifier("create_ou", fmt.Sprintf("OU=%s,%s", params.Name, params.ParentDN), params.ParentDN); err != nil {
+		return nil, err
+	}
 
 	sim, err := p.OUCreateSimulate(ctx, params)
 	if err != nil {
@@ -173,6 +176,9 @@ func entryToOU(e *ldap.Entry) (*OU, error) {
 
 // OUDelete supprime une OU (doit être vide).
 func (p *Pool) OUDelete(ctx context.Context, dn string) error {
+	if err := p.verifier("delete_ou", dn); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err
@@ -218,6 +224,9 @@ func (p *Pool) OUSearch(ctx context.Context, parentDN, filter string) ([]*OU, er
 
 // OUMove déplace une OU vers un autre parent.
 func (p *Pool) OUMove(ctx context.Context, dn, newParentDN string) error {
+	if err := p.verifier("create_ou", dn, newParentDN); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err

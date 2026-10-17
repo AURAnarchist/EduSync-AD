@@ -151,6 +151,31 @@ type Pool struct {
 	cache    *ExplorerCache // cache explorateur (arbre, recherches)
 	cacheAD  *ADCache       // cache AD SQLite (T2), optionnel
 	krb5Cli  *client.Client // client Kerberos pour SASL/GSSAPI
+	policy   Policy         // garde-fou RBAC (M26), optionnel
+}
+
+// Policy est le garde-fou de permissions (M26). Un *rbac.Policy la satisfait.
+// Check retourne une erreur si l'action est refusée pour les cibles données.
+type Policy interface {
+	Check(permission string, dns ...string) error
+}
+
+// ErrInsufficientRights signale une action refusée par le garde-fou RBAC.
+var ErrInsufficientRights = errors.New("ad: droits insuffisants")
+
+// SetPolicy attache (ou détache avec nil) le garde-fou RBAC du pool.
+func (p *Pool) SetPolicy(policy Policy) { p.policy = policy }
+
+// verifierApplique verifie une permission pour les cibles données. Sans
+// politique attachée, aucune vérification n'est appliquée (tests, scripts).
+func (p *Pool) verifier(permission string, dns ...string) error {
+	if p.policy == nil {
+		return nil
+	}
+	if err := p.policy.Check(permission, dns...); err != nil {
+		return fmt.Errorf("%w: %v", ErrInsufficientRights, err)
+	}
+	return nil
 }
 
 // NewPool crée un pool de connexions AD.

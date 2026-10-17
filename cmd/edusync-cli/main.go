@@ -122,6 +122,11 @@ Commandes :
   multisite remove         Supprime un profil de domaine
   multisite import-legacy  Importe la connexion mémorisée (M9)
   multisite ensure         Charge/migre les sites (jamais bloquant)
+  rbac roles               Affiche les rôles et leurs permissions
+  rbac list                Liste les délégués enregistrés
+  rbac add                 Ajoute un délégué (rôle + portées OU/groupe)
+  rbac remove              Supprime un délégué
+  rbac policy              Résout la politique d'un opérateur
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -192,6 +197,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdVault(args[1:], stdout, stderr)
 	case "multisite":
 		return cmdMultisite(args[1:], stdout, stderr)
+	case "rbac":
+		return cmdRBAC(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

@@ -123,6 +123,9 @@ func (p *Pool) GroupCreate(ctx context.Context, params GroupCreateParams) (*Grou
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}
+	if err := p.verifier("create_group", fmt.Sprintf("CN=%s,%s", params.CN, params.OU), params.OU); err != nil {
+		return nil, err
+	}
 
 	sim, err := p.GroupCreateSimulate(ctx, params)
 	if err != nil {
@@ -208,6 +211,9 @@ func entryToGroup(e *ldap.Entry) (*Group, error) {
 
 // GroupAddMember ajoute un membre à un groupe.
 func (p *Pool) GroupAddMember(ctx context.Context, groupDN, memberDN string) error {
+	if err := p.verifier("manage_groups", groupDN); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err
@@ -224,6 +230,9 @@ func (p *Pool) GroupAddMember(ctx context.Context, groupDN, memberDN string) err
 
 // GroupRemoveMember retire un membre d'un groupe.
 func (p *Pool) GroupRemoveMember(ctx context.Context, groupDN, memberDN string) error {
+	if err := p.verifier("manage_groups", groupDN); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err
@@ -240,6 +249,9 @@ func (p *Pool) GroupRemoveMember(ctx context.Context, groupDN, memberDN string) 
 
 // GroupDelete supprime un groupe.
 func (p *Pool) GroupDelete(ctx context.Context, dn string) error {
+	if err := p.verifier("delete_group", dn); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err

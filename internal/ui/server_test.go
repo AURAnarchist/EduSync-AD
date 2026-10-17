@@ -15,6 +15,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/multisite"
 	"github.com/estemobs/EduSync-AD/internal/progress"
+	"github.com/estemobs/EduSync-AD/internal/rbac"
 	"github.com/estemobs/EduSync-AD/internal/vault"
 )
 
@@ -1553,6 +1554,88 @@ func TestMultisiteSansSession(t *testing.T) {
 	s, _ := nouveauServeur(t)
 
 	w := demander(t, s, "GET", "/app/multisite", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
+
+// ─── RBAC — délégation d'administration (M26) ────────────────────────────
+
+func TestRBACPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/rbac", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	corps := w.Body.String()
+	for _, attendu := range []string{"RBAC", "Super-admin", "Helpdesk"} {
+		if !strings.Contains(corps, attendu) {
+			t.Errorf("page sans %q", attendu)
+		}
+	}
+}
+
+func TestRBACAjouterEtSupprimer(t *testing.T) {
+	s, dir := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/rbac/ajouter", url.Values{
+		"operateur": {"alice"},
+		"role":      {"admin_classe"},
+		"site":      {"lycee.local"},
+		"ous":       {"OU=3emeA,OU=eleves,DC=lycee,DC=local"},
+		"actif":     {"1"},
+	}, entetes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ajouter: code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Délégué ajouté") {
+		t.Errorf("confirmation absente : %s", w.Body.String())
+	}
+
+	grants, err := rbac.ChargerGrants(filepath.Join(dir, rbac.NomFichier))
+	if err != nil {
+		t.Fatalf("ChargerGrants: %v", err)
+	}
+	if len(grants) != 1 || grants[0].Role != rbac.AdminClasse || !grants[0].Actif {
+		t.Fatalf("grants = %+v", grants)
+	}
+
+	wSuppr := demander(t, s, "POST", "/app/rbac/supprimer", url.Values{"id": {grants[0].ID}}, entetes)
+	if !strings.Contains(wSuppr.Body.String(), "Délégué supprimé") {
+		t.Errorf("confirmation de suppression absente : %s", wSuppr.Body.String())
+	}
+	restants, err := rbac.ChargerGrants(filepath.Join(dir, rbac.NomFichier))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restants) != 0 {
+		t.Errorf("restants = %+v", restants)
+	}
+}
+
+func TestRBACRoleScopeSansPorteeRefuse(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	w := demander(t, s, "POST", "/app/rbac/ajouter", url.Values{
+		"operateur": {"alice"},
+		"role":      {"helpdesk"},
+		"actif":     {"1"},
+	}, entetes)
+	if !strings.Contains(w.Body.String(), "au moins une portée") {
+		t.Errorf("message d'erreur absent : %s", w.Body.String())
+	}
+}
+
+func TestRBACSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/rbac", nil, nil)
 	if w.Code != http.StatusSeeOther {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}

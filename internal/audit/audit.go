@@ -254,21 +254,33 @@ func (l *Log) Count() (int, error) {
 // Domains retourne la liste triée des domaines présents dans le journal
 // (M25 : sélection multi-site). Les entrées sans domaine sont ignorées.
 func (l *Log) Domains() ([]string, error) {
-	lignes, err := l.db.Query(`SELECT DISTINCT domaine FROM actions
-		WHERE domaine IS NOT NULL AND domaine != '' ORDER BY domaine`)
+	return l.distinct("domaine")
+}
+
+// Operators retourne la liste triée des opérateurs présents dans le journal
+// (M26 : journal par opérateur).
+func (l *Log) Operators() ([]string, error) {
+	return l.distinct("utilisateur")
+}
+
+// distinct retourne les valeurs distinctes non vides d'une colonne, triées.
+func (l *Log) distinct(colonne string) ([]string, error) {
+	// La colonne vient d'un littéral interne : aucune injection possible.
+	lignes, err := l.db.Query(`SELECT DISTINCT ` + colonne + ` FROM actions
+		WHERE ` + colonne + ` IS NOT NULL AND ` + colonne + ` != '' ORDER BY ` + colonne)
 	if err != nil {
-		return nil, fmt.Errorf("audit: lecture des domaines: %w", err)
+		return nil, fmt.Errorf("audit: lecture de %s: %w", colonne, err)
 	}
 	defer func() { _ = lignes.Close() }()
-	var domaines []string
+	var valeurs []string
 	for lignes.Next() {
-		var domaine string
-		if err := lignes.Scan(&domaine); err != nil {
-			return nil, fmt.Errorf("audit: lecture d'un domaine: %w", err)
+		var valeur string
+		if err := lignes.Scan(&valeur); err != nil {
+			return nil, fmt.Errorf("audit: lecture d'une valeur de %s: %w", colonne, err)
 		}
-		domaines = append(domaines, domaine)
+		valeurs = append(valeurs, valeur)
 	}
-	return domaines, lignes.Err()
+	return valeurs, lignes.Err()
 }
 
 // Close ferme la base.

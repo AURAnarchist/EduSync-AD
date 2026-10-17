@@ -41,6 +41,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/models"
 	"github.com/estemobs/EduSync-AD/internal/multisite"
 	"github.com/estemobs/EduSync-AD/internal/progress"
+	"github.com/estemobs/EduSync-AD/internal/rbac"
 	"github.com/estemobs/EduSync-AD/internal/rds"
 	"github.com/estemobs/EduSync-AD/internal/updater"
 	"github.com/estemobs/EduSync-AD/internal/vault"
@@ -179,6 +180,10 @@ type PageData struct {
 	// Multisite / multi-domaine (M25)
 	Sites           []multisite.ProfilDomaine
 	DomainesJournal []string
+
+	// RBAC — délégation d'administration (M26)
+	Grants    []rbac.Grant
+	RolesRBAC []RoleRBACUI
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -590,6 +595,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /app/multisite", s.requireAuthSession(s.pageMultisite))
 	mux.HandleFunc("POST /app/multisite/ajouter", s.requireAuthSession(s.multisiteAjouter))
 	mux.HandleFunc("POST /app/multisite/supprimer", s.requireAuthSession(s.multisiteSupprimer))
+
+	// RBAC — délégation d'administration (M26)
+	mux.HandleFunc("GET /app/rbac", s.requireAuthSession(s.pageRBAC))
+	mux.HandleFunc("POST /app/rbac/ajouter", s.requireAuthSession(s.rbacAjouter))
+	mux.HandleFunc("POST /app/rbac/supprimer", s.requireAuthSession(s.rbacSupprimer))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -4086,6 +4096,158 @@ func (s *Server) exchangeScriptFragment(w http.ResponseWriter, langue, script st
 	b.WriteString(html.EscapeString(script))
 	b.WriteString(`</pre></div>`)
 	w.Write([]byte(b.String()))
+}
+
+// ─── RBAC — délégation d'administration (M26) ────────────────────────────
+
+// RoleRBACUI expose un rôle et ses permissions au gabarit.
+type RoleRBACUI struct {
+	Role        string
+	Label       string
+	Scoped      bool
+	Permissions []string
+}
+
+// dossierRBAC retourne le dossier de delegations.json : à côté de config.json
+// en test, sinon dossier de configuration utilisateur (partagé avec Python).
+func (s *Server) dossierRBAC() string {
+	if s.opts.ConfigPath != "" {
+		return filepath.Dir(s.opts.ConfigPath)
+	}
+	if dir, err := config.ConfigDir(); err == nil && dir != "" {
+		return dir
+	}
+	return "."
+}
+
+// cheminDelegations retourne le chemin de delegations.json.
+func (s *Server) cheminDelegations() string {
+	return filepath.Join(s.dossierRBAC(), rbac.NomFichier)
+}
+
+func (s *Server) pageRBAC(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "rbac.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+
+	if grants, err := rbac.ChargerGrants(s.cheminDelegations()); err == nil {
+		d.Grants = grants
+	}
+	for _, role := range rbac.RoleOrder {
+		scoped := false
+		for _, s := range rbac.ScopedRoles {
+			if s == role {
+				scoped = true
+			}
+		}
+		perms := make([]string, 0, len(rbac.RolePermissions[role]))
+		for permission := range rbac.RolePermissions[role] {
+			perms = append(perms, permission)
+		}
+		d.RolesRBAC = append(d.RolesRBAC, RoleRBACUI{
+			Role: string(role), Label: rbac.RoleLabel(role), Scoped: scoped, Permissions: perms,
+		})
+	}
+	s.rendre(w, http.StatusOK, "rbac.html", d)
+}
+
+// rbacAjouter enregistre un nouveau délégué.
+func (s *Server) rbacAjouter(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	grants, err := rbac.ChargerGrants(s.cheminDelegations())
+	if err != nil {
+		s.rbacMessage(w, langue, err.Error(), true)
+		return
+	}
+	grant := rbac.Grant{
+		ID:        rbac.UniqueGrantID(grants),
+		Operateur: strings.TrimSpace(r.FormValue("operateur")),
+		Role:      rbac.Role(strings.TrimSpace(r.FormValue("role"))),
+		Site:      strings.TrimSpace(r.FormValue("site")),
+		OUs:       lignesSimples(r.FormValue("ous")),
+		Groupes:   lignesSimples(r.FormValue("groupes")),
+		Actif:     r.FormValue("actif") != "",
+	}
+	if errs := grant.Validate(); len(errs) > 0 {
+		s.rbacMessage(w, langue, strings.Join(errs, " "), true)
+		return
+	}
+	grants = append(grants, grant)
+	if err := rbac.SauvegarderGrants(grants, s.cheminDelegations()); err != nil {
+		s.rbacMessage(w, langue, err.Error(), true)
+		return
+	}
+	if s.journal != nil {
+		entree := nouvelleEntree("rbac_ajout", grant.Operateur, "succes",
+			fmt.Sprintf("Rôle %s", grant.Role))
+		_ = s.journal.Record(entree)
+	}
+	s.rbacMessage(w, langue, fmt.Sprintf(Tr(langue, "rbac.ajoute"), grant.Operateur), false)
+}
+
+// rbacSupprimer retire un délégué.
+func (s *Server) rbacSupprimer(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	id := strings.TrimSpace(r.FormValue("id"))
+	if id == "" {
+		s.rbacMessage(w, langue, Tr(langue, "rbac.id_obligatoire"), true)
+		return
+	}
+	grants, err := rbac.ChargerGrants(s.cheminDelegations())
+	if err != nil {
+		s.rbacMessage(w, langue, err.Error(), true)
+		return
+	}
+	restants := make([]rbac.Grant, 0, len(grants))
+	supprime := false
+	for _, grant := range grants {
+		if grant.ID == id {
+			supprime = true
+			continue
+		}
+		restants = append(restants, grant)
+	}
+	if !supprime {
+		s.rbacMessage(w, langue, Tr(langue, "rbac.introuvable"), true)
+		return
+	}
+	if err := rbac.SauvegarderGrants(restants, s.cheminDelegations()); err != nil {
+		s.rbacMessage(w, langue, err.Error(), true)
+		return
+	}
+	s.rbacMessage(w, langue, Tr(langue, "rbac.supprime"), false)
+}
+
+// rbacMessage rend un message simple (succès ou erreur).
+func (s *Server) rbacMessage(w http.ResponseWriter, langue, message string, erreur bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	classe := "text-emerald-600 dark:text-emerald-400"
+	if erreur {
+		classe = "text-rose-600 dark:text-rose-400"
+	}
+	fmt.Fprintf(w, `<p class="text-sm %s">%s</p>`, classe, html.EscapeString(message))
+}
+
+// lignesSimples découpe une zone de texte en lignes non vides (une DN par
+// ligne), sans découpage supplémentaire.
+func lignesSimples(valeur string) []string {
+	var lignes []string
+	for _, ligne := range strings.Split(valeur, "\n") {
+		if ligne = strings.TrimSpace(ligne); ligne != "" {
+			lignes = append(lignes, ligne)
+		}
+	}
+	return lignes
 }
 
 // ─── Multisite / multi-domaine (M25) ─────────────────────────────────────

@@ -144,6 +144,16 @@ func (p *Pool) UserCreate(ctx context.Context, params UserCreateParams) (*User, 
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}
+	if err := p.verifier("create_user", fmt.Sprintf("CN=%s,%s", params.DisplayName, params.OU), params.OU); err != nil {
+		return nil, err
+	}
+	// L'ajout aux groupes relève de manage_groups (comme Python, où chaque
+	// add_user_to_group est contrôlé séparément).
+	for _, groupDN := range params.Groups {
+		if err := p.verifier("manage_groups", groupDN); err != nil {
+			return nil, err
+		}
+	}
 
 	sim, err := p.UserCreateSimulate(ctx, params)
 	if err != nil {
@@ -274,6 +284,9 @@ func parentDN(dn string) string {
 
 // UserEnable active ou désactive un utilisateur.
 func (p *Pool) UserEnable(ctx context.Context, dn string, enable bool) error {
+	if err := p.verifier("disable_account", dn); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err
@@ -303,6 +316,9 @@ func (p *Pool) UserSetAttributes(ctx context.Context, dn string, majs []Attribut
 	if len(majs) == 0 {
 		return nil
 	}
+	if err := p.verifier("modify_user", dn); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err
@@ -324,6 +340,9 @@ func (p *Pool) UserSetAttributes(ctx context.Context, dn string, majs []Attribut
 
 // UserMove déplace un utilisateur vers une autre OU.
 func (p *Pool) UserMove(ctx context.Context, dn, newOU string) error {
+	if err := p.verifier("move_user", dn, newOU); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err
@@ -348,6 +367,9 @@ func rdnFromDN(dn string) string {
 
 // UserSetPassword change le mot de passe d'un utilisateur.
 func (p *Pool) UserSetPassword(ctx context.Context, dn, oldPwd, newPwd string) error {
+	if err := p.verifier("reset_password", dn); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err
@@ -363,6 +385,9 @@ func (p *Pool) UserSetPassword(ctx context.Context, dn, oldPwd, newPwd string) e
 
 // UserResetPassword réinitialise le mot de passe (admin, sans ancien mot de passe).
 func (p *Pool) UserResetPassword(ctx context.Context, dn, newPwd string) error {
+	if err := p.verifier("reset_password", dn); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err
@@ -380,6 +405,9 @@ func (p *Pool) UserResetPassword(ctx context.Context, dn, newPwd string) error {
 
 // UserAddToGroup ajoute un utilisateur à un groupe.
 func (p *Pool) UserAddToGroup(ctx context.Context, userDN, groupDN string) error {
+	if err := p.verifier("manage_groups", groupDN); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err
@@ -396,6 +424,9 @@ func (p *Pool) UserAddToGroup(ctx context.Context, userDN, groupDN string) error
 
 // UserRemoveFromGroup retire un utilisateur d'un groupe.
 func (p *Pool) UserRemoveFromGroup(ctx context.Context, userDN, groupDN string) error {
+	if err := p.verifier("manage_groups", groupDN); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err
@@ -412,6 +443,9 @@ func (p *Pool) UserRemoveFromGroup(ctx context.Context, userDN, groupDN string) 
 
 // UserDelete supprime un utilisateur (purge, pas archivage).
 func (p *Pool) UserDelete(ctx context.Context, dn string) error {
+	if err := p.verifier("delete_user", dn); err != nil {
+		return err
+	}
 	conn, err := p.Get(ctx)
 	if err != nil {
 		return err

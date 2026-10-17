@@ -172,6 +172,34 @@ func TestDomains(t *testing.T) {
 	}
 }
 
+// TestOperators verifie la liste des operateurs presents (M26).
+func TestOperators(t *testing.T) {
+	l, _ := ouvrirJournal(t)
+	l.SetContext("alice", "lycee.local")
+	if err := l.Record(entree("creation_compte", "a")); err != nil {
+		t.Fatal(err)
+	}
+	l.SetContext("bob", "lycee.local")
+	if err := l.Record(entree("reinitialisation_mdp", "b")); err != nil {
+		t.Fatal(err)
+	}
+	operateurs, err := l.Operators()
+	if err != nil {
+		t.Fatalf("Operators: %v", err)
+	}
+	if len(operateurs) != 2 || operateurs[0] != "alice" || operateurs[1] != "bob" {
+		t.Errorf("operateurs = %v", operateurs)
+	}
+	// Filtrage par opérateur (journal par opérateur, M26).
+	entrees, err := l.List(Filter{Operateur: "alice"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entrees) != 1 || entrees[0].Compte != "a" {
+		t.Errorf("entrees = %+v", entrees)
+	}
+}
+
 // TestPagination controle l'ordre anti-chronologique et les decalages.
 func TestPagination(t *testing.T) {
 	l, _ := ouvrirJournal(t)
