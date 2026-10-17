@@ -42,6 +42,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/progress"
 	"github.com/estemobs/EduSync-AD/internal/rds"
 	"github.com/estemobs/EduSync-AD/internal/updater"
+	"github.com/estemobs/EduSync-AD/internal/vault"
 	"github.com/estemobs/EduSync-AD/web"
 )
 
@@ -169,6 +170,10 @@ type PageData struct {
 
 	// Microsoft 365 / Entra ID (M19)
 	ConfigM365 ConfigM365UI
+
+	// Coffre-fort local des mots de passe
+	NombreCoffre int
+	CoffreSAMs   []string
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -569,6 +574,12 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/m365/config", s.requireAuthSession(s.m365ConfigForm))
 	mux.HandleFunc("POST /app/m365/user-plans", s.requireAuthSession(s.m365UserPlans))
 	mux.HandleFunc("POST /app/m365/group-plans", s.requireAuthSession(s.m365GroupPlans))
+
+	// Coffre-fort local des mots de passe
+	mux.HandleFunc("GET /app/vault", s.requireAuthSession(s.pageVault))
+	mux.HandleFunc("POST /app/vault/rechercher", s.requireAuthSession(s.vaultRechercher))
+	mux.HandleFunc("POST /app/vault/supprimer", s.requireAuthSession(s.vaultSupprimer))
+	mux.HandleFunc("POST /app/vault/purger", s.requireAuthSession(s.vaultPurger))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
@@ -4065,6 +4076,139 @@ func (s *Server) exchangeScriptFragment(w http.ResponseWriter, langue, script st
 	b.WriteString(html.EscapeString(script))
 	b.WriteString(`</pre></div>`)
 	w.Write([]byte(b.String()))
+}
+
+// ─── Coffre-fort local des mots de passe ──────────────────────────────────
+
+// dossierCoffre retourne le dossier du coffre : à côté de config.json en test,
+// sinon dossier de données utilisateur (partagé avec Python).
+func (s *Server) dossierCoffre() string {
+	if s.opts.ConfigPath != "" {
+		return filepath.Dir(s.opts.ConfigPath)
+	}
+	if dir, err := config.DataDir(); err == nil && dir != "" {
+		return dir
+	}
+	return "."
+}
+
+// ouvrirCoffreUI ouvre le coffre partagé (ou celui du dossier de test).
+func (s *Server) ouvrirCoffreUI() (*vault.Vault, error) {
+	chemin := filepath.Join(s.dossierCoffre(), vault.NomFichier)
+	if s.opts.ConfigPath == "" {
+		if defaut, err := vault.CheminParDefaut(); err == nil {
+			chemin = defaut
+		}
+	}
+	cle := ""
+	if s.opts.ConfigPath != "" {
+		cle = filepath.Join(s.dossierCoffre(), vault.NomFichierCle)
+	}
+	return vault.New(chemin, cle)
+}
+
+func (s *Server) pageVault(w http.ResponseWriter, r *http.Request, sess *session) {
+	d := s.donnees(r, Tr(s.langue(r), "vault.titre"))
+	d.Connecte = true
+	d.Utilisateur = sess.Utilisateur
+	d.Domaine = sess.Domaine
+	d.Controleur = sess.Controleur
+
+	v, err := s.ouvrirCoffreUI()
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	defer func() { _ = v.Close() }()
+	if sams, err := v.Liste(); err == nil {
+		d.CoffreSAMs = sams
+	}
+	if nombre, err := v.Count(); err == nil {
+		d.NombreCoffre = nombre
+	}
+	s.rendre(w, http.StatusOK, "vault.html", d)
+}
+
+// vaultRechercher réaffiche le mot de passe enregistré d'un compte.
+func (s *Server) vaultRechercher(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	sam := strings.TrimSpace(r.FormValue("sam"))
+	if sam == "" {
+		s.vaultMessage(w, langue, Tr(langue, "vault.sam_obligatoire"), true)
+		return
+	}
+	v, err := s.ouvrirCoffreUI()
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	defer func() { _ = v.Close() }()
+	motDePasse, ok := v.Get(sam)
+	if !ok {
+		s.vaultMessage(w, langue, fmt.Sprintf(Tr(langue, "vault.absent"), sam), true)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<div class="rounded-lg border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900">`+
+		`<p class="font-semibold">%s</p>`+
+		`<p class="mt-2 font-mono text-base text-emerald-600 dark:text-emerald-400">%s</p></div>`,
+		html.EscapeString(sam), html.EscapeString(motDePasse))
+}
+
+// vaultSupprimer supprime l'entrée d'un compte.
+func (s *Server) vaultSupprimer(w http.ResponseWriter, r *http.Request, _ *session) {
+	if err := r.ParseForm(); err != nil {
+		s.erreur(w, Tr(s.langue(r), "erreur.formulaire"))
+		return
+	}
+	langue := s.langue(r)
+	sam := strings.TrimSpace(r.FormValue("sam"))
+	if sam == "" {
+		s.vaultMessage(w, langue, Tr(langue, "vault.sam_obligatoire"), true)
+		return
+	}
+	v, err := s.ouvrirCoffreUI()
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	defer func() { _ = v.Close() }()
+	if err := v.Delete(sam); err != nil {
+		s.vaultMessage(w, langue, err.Error(), true)
+		return
+	}
+	s.vaultMessage(w, langue, fmt.Sprintf(Tr(langue, "vault.supprime"), sam), false)
+}
+
+// vaultPurger vide complètement le coffre.
+func (s *Server) vaultPurger(w http.ResponseWriter, r *http.Request, _ *session) {
+	langue := s.langue(r)
+	v, err := s.ouvrirCoffreUI()
+	if err != nil {
+		s.erreur(w, err.Error())
+		return
+	}
+	defer func() { _ = v.Close() }()
+	supprimes, err := v.ClearAll()
+	if err != nil {
+		s.vaultMessage(w, langue, err.Error(), true)
+		return
+	}
+	s.vaultMessage(w, langue, fmt.Sprintf(Tr(langue, "vault.purge"), supprimes), false)
+}
+
+// vaultMessage rend un message simple (succès ou erreur).
+func (s *Server) vaultMessage(w http.ResponseWriter, langue, message string, erreur bool) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	classe := "text-emerald-600 dark:text-emerald-400"
+	if erreur {
+		classe = "text-rose-600 dark:text-rose-400"
+	}
+	fmt.Fprintf(w, `<p class="text-sm %s">%s</p>`, classe, html.EscapeString(message))
 }
 
 // ─── Microsoft 365 / Entra ID (M19) ──────────────────────────────────────

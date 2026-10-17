@@ -624,6 +624,23 @@ var messages = map[string]map[string]string{
 		"m365.plans":                "plan(s)",
 		"m365.aucun":                "Aucun plan.",
 
+		// Coffre-fort local des mots de passe
+		"vault.titre":            "Coffre-fort des mots de passe",
+		"vault.sous_titre":       "Mots de passe de comptes élèves/personnels positionnés par EduSync AD (chiffrés AES-256-GCM, jamais sur l'AD).",
+		"vault.avertissement":    "Seuls les mots de passe qu'EduSync AD a lui-même positionnés figurent ici. Un mot de passe changé par un autre outil reste introuvable — c'est normal.",
+		"vault.rechercher_titre": "Rechercher / supprimer une entrée",
+		"vault.sam":              "Identifiant (sAMAccountName)",
+		"vault.rechercher":       "Rechercher",
+		"vault.supprimer":        "Supprimer",
+		"vault.purger":           "Purger le coffre",
+		"vault.confirmer_purge":  "Vider tout le coffre ? Cette action est irréversible.",
+		"vault.entrees":          "Entrées",
+		"vault.aucune":           "Le coffre est vide.",
+		"vault.sam_obligatoire":  "Saisissez un identifiant.",
+		"vault.absent":           "Aucun mot de passe enregistré pour %s.",
+		"vault.supprime":         "Entrée supprimée pour %s.",
+		"vault.purge":            "Coffre purgé : %d entrée(s) supprimée(s).",
+
 		// Scripts logon/logoff (M15)
 		"logonscripts.titre":           "Scripts logon/logoff",
 		"logonscripts.sous_titre":      "Déployer des scripts de connexion/déconnexion sur les comptes.",
@@ -1319,6 +1336,23 @@ var messages = map[string]map[string]string{
 		"m365.type_inconnu":         "Unknown group type.",
 		"m365.plans":                "plan(s)",
 		"m365.aucun":                "No plan.",
+
+		// Local password vault
+		"vault.titre":            "Password vault",
+		"vault.sous_titre":       "Passwords of student/staff accounts set by EduSync AD (AES-256-GCM encrypted, never on AD).",
+		"vault.avertissement":    "Only passwords that EduSync AD itself has set appear here. A password changed by another tool cannot be found — this is expected.",
+		"vault.rechercher_titre": "Search / delete an entry",
+		"vault.sam":              "Identifier (sAMAccountName)",
+		"vault.rechercher":       "Search",
+		"vault.supprimer":        "Delete",
+		"vault.purger":           "Purge vault",
+		"vault.confirmer_purge":  "Empty the whole vault? This cannot be undone.",
+		"vault.entrees":          "Entries",
+		"vault.aucune":           "The vault is empty.",
+		"vault.sam_obligatoire":  "Enter an identifier.",
+		"vault.absent":           "No password stored for %s.",
+		"vault.supprime":         "Entry deleted for %s.",
+		"vault.purge":            "Vault purged: %d entry(ies) deleted.",
 
 		// Scripts logon/logoff (M15)
 		"logonscripts.titre":           "Logon/Logoff Scripts",

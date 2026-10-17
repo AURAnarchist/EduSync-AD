@@ -112,6 +112,11 @@ Commandes :
   m365 group-plans         Prépare les groupes Entra depuis des groupes AD
   m365 photo-mapping       Associe les photos d'identité aux comptes cloud
   m365 hybrid              Check-list d'identité hybride (PHS/ADFS/PTA)
+  vault set                Enregistre un mot de passe positionné (coffre local)
+  vault get                Réaffiche le mot de passe enregistré d'un compte
+  vault list               Liste les comptes présents dans le coffre
+  vault count              Nombre d'entrées du coffre
+  vault clear              Purge le coffre (— force : --yes)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -178,6 +183,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdExchange(args[1:], stdout, stderr)
 	case "m365":
 		return cmdM365(args[1:], stdout, stderr)
+	case "vault":
+		return cmdVault(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:

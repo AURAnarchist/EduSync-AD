@@ -287,7 +287,7 @@ edusync-ad/
 | **M30 — Conformité & sécurité** | Rapport RGPD + droit à l'oubli, MFA admin, session unique, PSO, signature exports | ⬜ |
 | **M31 — DFS / IIS / WebDAV / FTP** | Espaces DFS, publication WebDAV/IIS, FTP isolé (priorité basse) | ⬜ |
 | **M32 — Sauvegarde / Restauration** | Backup ZIP chiffré, restore 1-clic, migration vN→vN+1 | ⬜ |
-| **Coffre MDP** | AES-256 local (machines admin), jamais sur l'AD | ⬜ |
+| **Coffre MDP** | AES-256 local (machines admin), jamais sur l'AD | ✅ Livré et testé (B13) — `internal/vault/vault.go` : coffre SQLite local `password_vault.sqlite3` (schéma et chiffrement AES-256-GCM identiques à Python, relu dans les deux sens), stockage des mots de passe *positionnés par l'application* uniquement, recherche insensible à la casse, suppression/purge, permissions 0600 ; CLI `vault set/get/has/delete/list/count/clear`, page UI `/app/vault` |
 
 ### 4.4 Fondations Python (T0-T2) — équivalents Go
 
@@ -747,6 +747,7 @@ Ajoute le support multisite (multi-domaine/forêt).
 23. **Lot B, B10** : ✅ fait — M21 RDS / Bureau à distance : `internal/rds/rds.go` (configuration broker/domaine/profils avec validation, plans de collections et RemoteApp, génération des scripts Remote PowerShell : collections idempotentes + UPD par collection, publication RemoteApp par groupe AD, registre FSLogix ; persistance `rds.json`/`rds_plans.json` au format Python), CLI `rds config/collection-script/remoteapp-script/fslogix-script/plans`, routes UI `/app/rds` (+ config/collection-script/remoteapp-script/fslogix-script), gabarit `rds.html`, i18n fr/en, tests unitaires.
 24. **Lot B, B11** : ✅ fait — M20 Exchange : `internal/exchange/exchange.go` (configuration on-prem/online avec validation, plans de boîtes et de groupes de messagerie, normalisation des adresses et alias, scripts PowerShell sur site et Exchange Online app-only, politique d'adresses, écriture LDAP `mail`/`proxyAddresses` via `Pool.UserSetAttributes`, rapport CSV, persistance `exchange.json` au format Python), CLI `exchange config/plans/onprem-script/online-script/policy-script/report`, routes UI `/app/exchange` (+ config/plans/onprem-script/online-script/policy-script), gabarit `exchange.html`, i18n fr/en, tests unitaires.
 25. **Lot B, B12** : ✅ fait — M19 Microsoft 365 / Entra ID : `internal/graph/graph.go` (client Microsoft Graph OAuth2 client_credentials avec secret ou certificat JWT RS256, jeton en cache, pagination, erreurs Graph traduites, secret chiffré AES-GCM dans `m365.json`) + `internal/m365/m365.go` (plans de comptes cloud + licences éducation, plans de groupes Entra/Teams, mapping des photos d'identité, check-list identité hybride PHS/ADFS/PTA), CLI `m365 config/user-plans/group-plans/photo-mapping/hybrid`, routes UI `/app/m365` (+ config/user-plans/group-plans), gabarit `m365.html`, i18n fr/en, tests unitaires.
+26. **Coffre MDP** : ✅ fait — coffre-fort local des mots de passe positionnés par l'application : `internal/vault/vault.go` (SQLite `password_vault.sqlite3`, AES-256-GCM, schéma et clé partagés avec Python — aller-retour vérifié dans les deux sens), CLI `vault set/get/has/delete/list/count/clear`, page UI `/app/vault`, i18n fr/en, tests unitaires.
 
 **Priorité 2 — releases :**
 

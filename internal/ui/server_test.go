@@ -14,6 +14,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/classspaces"
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/progress"
+	"github.com/estemobs/EduSync-AD/internal/vault"
 )
 
 func nouveauServeur(t *testing.T) (*Server, string) {
@@ -1399,6 +1400,88 @@ func TestM365SansSession(t *testing.T) {
 	s, _ := nouveauServeur(t)
 
 	w := demander(t, s, "GET", "/app/m365", nil, nil)
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
+	}
+}
+
+// ─── Coffre-fort local des mots de passe ─────────────────────────────────
+
+func TestVaultPage(t *testing.T) {
+	s, _ := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+
+	w := demander(t, s, "GET", "/app/vault", nil, map[string]string{"Cookie": cookie.Name + "=" + cookie.Value})
+	if w.Code != http.StatusOK {
+		t.Fatalf("code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Coffre-fort") {
+		t.Errorf("titre absent, body: %s", w.Body.String())
+	}
+}
+
+func TestVaultRechercherEtSupprimer(t *testing.T) {
+	s, dir := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	// On remplit le coffre du même dossier que celui utilisé par l'UI.
+	v, err := vault.New(filepath.Join(dir, vault.NomFichier), filepath.Join(dir, vault.NomFichierCle))
+	if err != nil {
+		t.Fatalf("ouverture du coffre: %v", err)
+	}
+	if err := v.Store("eleve1", "Secret123!"); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	w := demander(t, s, "POST", "/app/vault/rechercher", url.Values{"sam": {"eleve1"}}, entetes)
+	if w.Code != http.StatusOK {
+		t.Fatalf("rechercher: code = %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Secret123!") {
+		t.Errorf("mot de passe absent, body: %s", w.Body.String())
+	}
+
+	wAbsent := demander(t, s, "POST", "/app/vault/rechercher", url.Values{"sam": {"inconnu"}}, entetes)
+	if !strings.Contains(wAbsent.Body.String(), "Aucun mot de passe") {
+		t.Errorf("message d'absence manquant : %s", wAbsent.Body.String())
+	}
+
+	wSuppr := demander(t, s, "POST", "/app/vault/supprimer", url.Values{"sam": {"eleve1"}}, entetes)
+	if !strings.Contains(wSuppr.Body.String(), "Entrée supprimée") {
+		t.Errorf("confirmation de suppression manquante : %s", wSuppr.Body.String())
+	}
+}
+
+func TestVaultPurger(t *testing.T) {
+	s, dir := nouveauServeur(t)
+	cookie := ouvrirSession(t, s)
+	entetes := map[string]string{"Cookie": cookie.Name + "=" + cookie.Value}
+
+	v, err := vault.New(filepath.Join(dir, vault.NomFichier), filepath.Join(dir, vault.NomFichierCle))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Store("a", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	w := demander(t, s, "POST", "/app/vault/purger", url.Values{}, entetes)
+	if !strings.Contains(w.Body.String(), "Coffre purgé") {
+		t.Errorf("confirmation de purge manquante : %s", w.Body.String())
+	}
+}
+
+func TestVaultSansSession(t *testing.T) {
+	s, _ := nouveauServeur(t)
+
+	w := demander(t, s, "GET", "/app/vault", nil, nil)
 	if w.Code != http.StatusSeeOther {
 		t.Errorf("code = %d, attendu 303 (redirection login)", w.Code)
 	}
