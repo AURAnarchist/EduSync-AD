@@ -165,6 +165,13 @@ Commandes :
   assistant smart-id       Génère un identifiant unique (M29)
   assistant security       Analyse de sécurité (recommandations + score, M29)
   assistant journal        Analyse le journal d'actions (M29)
+  compliance mfa           Vérifie la double authentification admin (M30)
+  compliance secret        Génère un secret TOTP et des codes de secours (M30)
+  compliance session       Contrôle la politique de session unique (M30)
+  compliance pso           Analyse les politiques de mot de passe (M30)
+  compliance sign          Signe un export JSON (M30)
+  compliance verify        Vérifie la signature d'un export (M30)
+  compliance rgpd          Génère le rapport RGPD (M30)
   connect                 Teste l'accessibilité d'un contrôleur (TCP + TLS)
 
 Exemples :
@@ -247,6 +254,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return cmdAPI(args[1:], stdout, stderr)
 	case "assistant":
 		return cmdAssistant(args[1:], stdout, stderr)
+	case "compliance":
+		return cmdCompliance(args[1:], stdout, stderr)
 	case "connect":
 		return cmdConnect(args[1:], stdout, stderr)
 	default:
