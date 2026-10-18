@@ -35,6 +35,7 @@ import (
 	"github.com/estemobs/EduSync-AD/internal/api"
 	"github.com/estemobs/EduSync-AD/internal/audit"
 	"github.com/estemobs/EduSync-AD/internal/classspaces"
+	"github.com/estemobs/EduSync-AD/internal/compliance"
 	"github.com/estemobs/EduSync-AD/internal/config"
 	"github.com/estemobs/EduSync-AD/internal/exchange"
 	"github.com/estemobs/EduSync-AD/internal/graph"
@@ -225,6 +226,10 @@ type PageData struct {
 	AssistantFormats       []string
 	AssistantADDisponible  bool
 	AssistantAvertissement string
+
+	// Conformité & sécurité (M30)
+	ComplianceConfig       compliance.Config
+	ComplianceCheminConfig string
 }
 
 // importRow représente une ligne du CSV d'import (niveau paquet pour réutilisation).
@@ -695,6 +700,14 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /app/assistant/cleanup", s.requireAuthSession(s.assistantCleanup))
 	mux.HandleFunc("POST /app/assistant/securite", s.requireAuthSession(s.assistantSecurite))
 	mux.HandleFunc("POST /app/assistant/journal", s.requireAuthSession(s.assistantJournal))
+
+	// Conformité & sécurité (M30)
+	mux.HandleFunc("GET /app/compliance", s.requireAuthSession(s.pageCompliance))
+	mux.HandleFunc("POST /app/compliance/config", s.requireAuthSession(s.complianceConfigForm))
+	mux.HandleFunc("POST /app/compliance/mfa/status", s.requireAuthSession(s.complianceMFAStatus))
+	mux.HandleFunc("POST /app/compliance/mfa/init", s.requireAuthSession(s.complianceMFAInit))
+	mux.HandleFunc("POST /app/compliance/rgpd", s.requireAuthSession(s.complianceRGPD))
+	mux.HandleFunc("POST /app/compliance/pso", s.requireAuthSession(s.compliancePSO))
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(mustSub("static")))))
 	return mux
